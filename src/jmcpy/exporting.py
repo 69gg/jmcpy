@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
 import tempfile
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "AsyncPictureSource",
     "PictureSource",
+    "ProgressHook",
     "download_chapter",
     "download_chapter_async",
 ]
@@ -99,7 +101,7 @@ class _Plan:
 
 def _make_plan(
     output: ExportFormat,
-    dest: str | Path | None,
+    dest: str | os.PathLike[str] | None,
     decode: bool,
     concurrency: int | None,
     overwrite: bool,
@@ -267,7 +269,7 @@ def download_chapter(
     chapter: Chapter,
     *,
     output: ExportFormat = ExportFormat.PATH,
-    dest: str | Path | None = None,
+    dest: str | os.PathLike[str] | None = None,
     decode: bool = True,
     concurrency: int | None = None,
     overwrite: bool = False,
@@ -327,7 +329,7 @@ async def download_chapter_async(
     chapter: Chapter,
     *,
     output: ExportFormat = ExportFormat.PATH,
-    dest: str | Path | None = None,
+    dest: str | os.PathLike[str] | None = None,
     decode: bool = True,
     concurrency: int | None = None,
     overwrite: bool = False,

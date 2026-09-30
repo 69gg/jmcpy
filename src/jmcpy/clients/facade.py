@@ -12,7 +12,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Iterator, Mapping
+import os
+from collections.abc import AsyncIterator, Awaitable, Iterator, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -20,9 +21,9 @@ from ..credentials import CredentialStore, LoginSession
 from ..endpoints import EndpointSet
 from ..enums import ExportFormat, Genre, RankingSpan, SearchTarget, SortBy, SubGenre, TimeRange
 from ..errors import ConfigurationError
-from ..exporting import download_chapter, download_chapter_async
+from ..exporting import ProgressHook
 from ..imaging import DEFAULT_JPEG_QUALITY, DEFAULT_PDF_DPI
-from ..models import Account, Book, BookBrief, Chapter, CommentFeed, Listing
+from ..models import Account, Book, BookBrief, Chapter, CommentFeed, Listing, Picture
 from ..models.artifacts import ChapterDownload
 from ..settings import Settings, apply_overrides
 from .mobile import AsyncMobileClient, MobileClient
@@ -296,7 +297,11 @@ class Client:
         return self._mobile.iter_comments(book_id, start=start, limit=limit)
 
     # ------------------------------------------------------------------ 下载
-    def fetch_picture(self, picture: Any) -> bytes:
+    def picture(self, chapter: Chapter, index: int) -> Picture:
+        """构造单张图片定位（使用当前 CDN 端点，``index`` 从 1 开始）。"""
+        return self._mobile.picture(chapter, index)
+
+    def fetch_picture(self, picture: Picture) -> bytes:
         """取回单张图片的原始字节。"""
         return self._mobile.fetch_picture(picture)
 
@@ -305,24 +310,18 @@ class Client:
         chapter: Chapter | int | str,
         *,
         output: ExportFormat = ExportFormat.PATH,
-        dest: str | Any | None = None,
+        dest: str | os.PathLike[str] | None = None,
         decode: bool = True,
         concurrency: int | None = None,
         overwrite: bool = False,
         quality: int = DEFAULT_JPEG_QUALITY,
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
-        on_progress: Any = None,
+        on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
-        """下载章节并交付为 bytes / base64 / 文件 / PDF。
-
-        ``chapter`` 可以是 :class:`~jmcpy.models.Chapter`，也可以是章节车号
-        （此时会先取一次章节详情）。
-        """
-        resolved = chapter if isinstance(chapter, Chapter) else self.get_chapter(chapter)
-        return download_chapter(
-            self._mobile,
-            resolved,
+        """下载章节并交付为 bytes / base64 / 文件 / PDF（语义同移动端实现）。"""
+        return self._mobile.download(
+            chapter,
             output=output,
             dest=dest,
             decode=decode,
@@ -561,7 +560,11 @@ class AsyncClient:
         return self._mobile.iter_comments(book_id, start=start, limit=limit)
 
     # ------------------------------------------------------------------ 下载
-    def fetch_picture(self, picture: Any) -> Any:
+    def picture(self, chapter: Chapter, index: int) -> Picture:
+        """构造单张图片定位（使用当前 CDN 端点，``index`` 从 1 开始）。"""
+        return self._mobile.picture(chapter, index)
+
+    def fetch_picture(self, picture: Picture) -> Awaitable[bytes]:
         """返回取图的协程（单张图片的原始字节）。"""
         return self._mobile.fetch_picture(picture)
 
@@ -570,20 +573,18 @@ class AsyncClient:
         chapter: Chapter | int | str,
         *,
         output: ExportFormat = ExportFormat.PATH,
-        dest: Any | None = None,
+        dest: str | os.PathLike[str] | None = None,
         decode: bool = True,
         concurrency: int | None = None,
         overwrite: bool = False,
         quality: int = DEFAULT_JPEG_QUALITY,
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
-        on_progress: Any = None,
+        on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
         """异步版下载；语义同同步版。"""
-        resolved = chapter if isinstance(chapter, Chapter) else await self.get_chapter(chapter)
-        return await download_chapter_async(
-            self._mobile,
-            resolved,
+        return await self._mobile.download(
+            chapter,
             output=output,
             dest=dest,
             decode=decode,

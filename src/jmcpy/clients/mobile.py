@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import AsyncIterator, Iterator, Mapping
 from typing import Any
@@ -40,9 +41,12 @@ from ..constants import (
 )
 from ..crypto import sign_request, unseal_payload
 from ..endpoints import AsyncEndpointPool, EndpointPool, EndpointSet
-from ..enums import Genre, RankingSpan, SearchTarget, SortBy, TimeRange
+from ..enums import ExportFormat, Genre, RankingSpan, SearchTarget, SortBy, TimeRange
 from ..errors import ApiRejected, AuthRejected, InvalidArgument, JmcpyError, NotFound, ResponseInvalid
+from ..exporting import ProgressHook, download_chapter, download_chapter_async
+from ..imaging import DEFAULT_JPEG_QUALITY, DEFAULT_PDF_DPI
 from ..models import Account, Book, BookBrief, Chapter, CommentFeed, Listing, Picture
+from ..models.artifacts import ChapterDownload
 from ..parsing import (
     parse_account,
     parse_book_detail,
@@ -457,6 +461,41 @@ class MobileClient(_MobileCore):
         )
         return reply.content
 
+    # ------------------------------------------------------------------ 下载
+    def download(
+        self,
+        chapter: Chapter | int | str,
+        *,
+        output: ExportFormat = ExportFormat.PATH,
+        dest: str | os.PathLike[str] | None = None,
+        decode: bool = True,
+        concurrency: int | None = None,
+        overwrite: bool = False,
+        quality: int = DEFAULT_JPEG_QUALITY,
+        dpi: float = DEFAULT_PDF_DPI,
+        strict: bool = False,
+        on_progress: ProgressHook | None = None,
+    ) -> ChapterDownload:
+        """下载章节并按 ``output`` 交付为 bytes / base64 / 文件 / PDF。
+
+        ``chapter`` 可以是 :class:`~jmcpy.models.Chapter`，也可以是章节车号
+        （此时会先取一次章节详情）。
+        """
+        resolved = chapter if isinstance(chapter, Chapter) else self.get_chapter(chapter)
+        return download_chapter(
+            self,
+            resolved,
+            output=output,
+            dest=dest,
+            decode=decode,
+            concurrency=concurrency,
+            overwrite=overwrite,
+            quality=quality,
+            dpi=dpi,
+            strict=strict,
+            on_progress=on_progress,
+        )
+
     # ------------------------------------------------------------------ 评论
 
     def get_comments(self, book_id: int | str, *, page: int = 1) -> CommentFeed:
@@ -723,7 +762,39 @@ class AsyncMobileClient(_MobileCore):
         )
         return reply.content
 
+    # ------------------------------------------------------------------ 下载
+    async def download(
+        self,
+        chapter: Chapter | int | str,
+        *,
+        output: ExportFormat = ExportFormat.PATH,
+        dest: str | os.PathLike[str] | None = None,
+        decode: bool = True,
+        concurrency: int | None = None,
+        overwrite: bool = False,
+        quality: int = DEFAULT_JPEG_QUALITY,
+        dpi: float = DEFAULT_PDF_DPI,
+        strict: bool = False,
+        on_progress: ProgressHook | None = None,
+    ) -> ChapterDownload:
+        """异步版下载；语义同同步版。"""
+        resolved = chapter if isinstance(chapter, Chapter) else await self.get_chapter(chapter)
+        return await download_chapter_async(
+            self,
+            resolved,
+            output=output,
+            dest=dest,
+            decode=decode,
+            concurrency=concurrency,
+            overwrite=overwrite,
+            quality=quality,
+            dpi=dpi,
+            strict=strict,
+            on_progress=on_progress,
+        )
+
     # ------------------------------------------------------------------ 评论
+
     async def get_comments(self, book_id: int | str, *, page: int = 1) -> CommentFeed:
         payload = await self._api(PATH_COMMENTS, params={"mode": "all", "page": page, "aid": resolve_book_id(book_id)})
         return parse_comment_feed(payload, page=page)

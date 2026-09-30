@@ -26,6 +26,7 @@ __all__ = [
     "descramble",
     "detect_suffix",
     "encode_image",
+    "image_stem",
     "load_image",
     "write_pdf",
 ]
@@ -53,6 +54,13 @@ _MAGIC = (
 )
 
 
+def image_stem(filename: str) -> str:
+    """取出图片名（**不含扩展名**），分块数按它计算。"""
+    name = filename.split("?", 1)[0].rsplit("/", 1)[-1]
+    dot = name.rfind(".")
+    return name[:dot] if dot > 0 else name
+
+
 def block_count(scramble_id: int | None, chapter_id: int, filename: str) -> int:
     """返回该图片被切成的块数；``0`` 表示无需还原。
 
@@ -60,8 +68,11 @@ def block_count(scramble_id: int | None, chapter_id: int, filename: str) -> int:
 
     * ``chapter_id < scramble_id``：未启用切割；
     * ``chapter_id < 268850``：固定切 10 块；
-    * 否则按 ``md5(f"{chapter_id}{filename}")`` 末位字符取模，
+    * 否则按 ``md5(f"{chapter_id}{不含扩展名的文件名}")`` 末位字符取模：
       2023-02-08 之前（``< 421926``）取模 10，之后取模 8，再 ``* 2 + 2``。
+
+    注意参与哈希的是**不含扩展名**的文件名（``00005.webp`` → ``00005``）。
+    这一点用真实图片验证过：带上扩展名时算出的块数无法还原出连续的画面。
     """
     if not scramble_id:
         return 0
@@ -71,7 +82,7 @@ def block_count(scramble_id: int | None, chapter_id: int, filename: str) -> int:
         return 10
 
     modulus = 10 if chapter_id < SCRAMBLE_MODERN_LIMIT else 8
-    digest = md5_hex(f"{chapter_id}{filename}")
+    digest = md5_hex(f"{chapter_id}{image_stem(filename)}")
     return (ord(digest[-1]) % modulus) * 2 + 2
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -26,6 +27,12 @@ from jmcpy.transport.session import HttpSession
 MOBILE_ENDPOINTS = ("mobile.example",)
 WEB_ENDPOINTS = ("web.example",)
 
+PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
+    b"\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0\x00\x00\x03\x01\x01\x00\x18\xdd\x8d\xb0"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 SCRAMBLE_HTML = "<html><script>var scramble_id = 220980;</script></html>"
 
 LISTING_HTML = '<span class="text-white">7</span> A漫.<a href="/album/4242/x" title="网页结果">网页结果</a>'
@@ -43,6 +50,8 @@ class FakeServer(HttpBackend):
     def send(self, request: HttpRequest) -> Reply:
         self.requests.append(request)
         path = urlparse(request.url).path
+        if "/media/photos/" in path:  # 图片请求不带签名头，单独应答
+            return Reply(status=200, url=request.url, content=PNG_BYTES)
         route = self.routes.get(path)
         if callable(route):
             route = route(request)
@@ -217,6 +226,25 @@ def test_delegated_methods(load_fixture: Callable[[str], Any], home: Path) -> No
     assert scramble == 220980
     assert len(pages) == 1
     assert client.cover_url(1).endswith("/media/albums/1.jpg")
+
+
+def test_picture_and_download_delegate(load_fixture: Callable[[str], Any], home: Path, tmp_path: Path) -> None:
+    from jmcpy.enums import ExportFormat
+
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
+    client = make_client(resolved, mobile_server, web_server)
+    chapter = client.get_chapter(1114751)
+
+    picture = client.picture(chapter, 1)
+    assert picture.url.startswith("https://cdn.example/media/photos/1114751/")
+
+    result = client.download(
+        replace(chapter, pictures=chapter.pictures[:2]),
+        output=ExportFormat.PATH,
+        dest=tmp_path,
+    )
+    assert len(result) == 2
+    assert all(path.is_file() for path in result.paths)
 
 
 def test_login_syncs_cookies_to_web(load_fixture: Callable[[str], Any], home: Path) -> None:

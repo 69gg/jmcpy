@@ -21,6 +21,7 @@ from jmcpy.imaging import (
     descramble,
     detect_suffix,
     encode_image,
+    image_stem,
     load_image,
     write_pdf,
 )
@@ -132,6 +133,23 @@ def test_block_count_modern_range_is_even_between_2_and_20() -> None:
         assert 2 <= value <= 20
 
 
+def test_block_count_matches_values_verified_on_live_images() -> None:
+    """这三个取值来自对真实图片的接缝分析：只有按它们还原，画面才会重新连续。
+
+    其中参与哈希的是**不含扩展名**的文件名——带上扩展名会算出 4/10，还原后画面反而错位。
+    """
+    assert block_count(220980, 1114751, "00005.webp") == 6
+    assert block_count(220980, 1114751, "00001.webp") == 8
+    assert block_count(220980, 1472715, "00001.webp") == 4
+
+
+def test_block_count_ignores_extension_and_query() -> None:
+    assert block_count(220980, 1114751, "00005") == block_count(220980, 1114751, "00005.webp")
+    assert block_count(220980, 1114751, "00005.jpg") == block_count(220980, 1114751, "00005.webp")
+    assert block_count(220980, 1114751, "00005.webp?v=1") == block_count(220980, 1114751, "00005.webp")
+    assert block_count(220980, 1114751, "photos/1114751/00005.webp") == 6
+
+
 def test_block_count_depends_on_filename() -> None:
     values = {block_count(220980, 900000, f"{index:05d}.webp") for index in range(1, 30)}
 
@@ -158,6 +176,13 @@ def test_descramble_skips_when_blocks_exceed_height() -> None:
     image = make_gradient(4, 3)
 
     assert descramble(image, 10) is image
+
+
+def test_image_stem_strips_extension() -> None:
+    assert image_stem("00005.webp") == "00005"
+    assert image_stem("media/photos/1/00005.webp?v=2") == "00005"
+    assert image_stem("noextension") == "noextension"
+    assert image_stem(".hidden") == ".hidden"
 
 
 def test_detect_suffix_from_magic_bytes() -> None:

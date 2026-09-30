@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,6 +25,11 @@ from jmcpy.transport.response import HttpRequest, Reply
 from jmcpy.transport.session import AsyncHttpSession, HttpSession
 
 ENDPOINTS = ("mobile.example",)
+PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
+    b"\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\xcf\xc0\x00\x00\x03\x01\x01\x00\x18\xdd\x8d\xb0"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 CDN = "cdn.example"
 SCRAMBLE_HTML = "<html><script>var scramble_id = 268850;</script></html>"
 
@@ -42,6 +48,9 @@ class FakeServer(HttpBackend):
     # -- 服务端行为 --
     def send(self, request: HttpRequest) -> Reply:
         self.requests.append(request)
+        path = urlparse(request.url).path
+        if "/media/photos/" in path:  # 图片请求不带签名头，单独应答
+            return Reply(status=200, url=request.url, content=PNG_BYTES)
         headers = {key.lower(): value for key, value in (request.headers or {}).items()}
         timestamp, _, version = headers["tokenparam"].partition(",")
         path = urlparse(request.url).path
@@ -102,9 +111,11 @@ class AsyncFakeServer(AsyncHttpBackend):
 
     async def send(self, request: HttpRequest) -> Reply:
         self.requests.append(request)
+        path = urlparse(request.url).path
+        if "/media/photos/" in path:
+            return Reply(status=200, url=request.url, content=PNG_BYTES)
         headers = {key.lower(): value for key, value in (request.headers or {}).items()}
         timestamp, _, _ = headers["tokenparam"].partition(",")
-        path = urlparse(request.url).path
         route = self.routes[path]
         if callable(route):
             route = route(request)
@@ -463,6 +474,46 @@ async def test_async_client_login_and_probe() -> None:
 
         assert account.uid == "1"
         assert client.is_logged_in() is True
+
+
+def test_picture_and_fetch_picture(load_fixture: Callable[[str], Any]) -> None:
+    client, _ = make_client(base_routes(load_fixture))
+
+    picture = client.picture(client.get_chapter(1114751), 1)
+    raw = client.fetch_picture(picture)
+
+    assert picture.index == 1
+    assert picture.url.startswith(f"https://{CDN}/media/photos/1114751/")
+    assert raw == PNG_BYTES
+
+
+def test_download_bytes_and_path(load_fixture: Callable[[str], Any], tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from jmcpy.enums import ExportFormat
+    from jmcpy.models.artifacts import ChapterDownload
+
+    client, _ = make_client(base_routes(load_fixture))
+    chapter = replace(client.get_chapter(1114751), pictures=("00001.webp", "00002.webp"))
+
+    as_bytes = client.download(chapter, output=ExportFormat.BYTES, concurrency=2)
+    as_paths = client.download(chapter, output=ExportFormat.PATH, dest=tmp_path)
+
+    assert isinstance(as_bytes, ChapterDownload)
+    assert [item.index for item in as_bytes] == [1, 2]
+    assert all(item.data for item in as_bytes)
+    assert sorted(path.name for path in as_paths.paths) == ["0001.png", "0002.png"]
+
+
+def test_download_accepts_chapter_id(load_fixture: Callable[[str], Any]) -> None:
+    from jmcpy.enums import ExportFormat
+
+    client, server = make_client(base_routes(load_fixture))
+
+    result = client.download(1114751, output=ExportFormat.BYTES, concurrency=1)
+
+    assert len(result) == len(load_fixture("mobile_chapter.json")["images"])
+    assert server.count("/chapter") == 1, "只应按车号取一次章节详情"
 
 
 async def _noop_sleep(delay: float) -> None:
