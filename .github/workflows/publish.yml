@@ -28,7 +28,8 @@ jobs:
           fetch-depth: 0 # 需要完整历史来确认标签打在 main 上
 
       - name: 安装 uv
-        uses: astral-sh/setup-uv@v10
+        # setup-uv 不提供浮动的大版本标签，按官方建议固定到具体提交
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: 确认标签打在 main 上
         run: |
