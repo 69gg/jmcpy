@@ -26,7 +26,7 @@ from jmcpy import Client, AsyncClient, Settings, ExportFormat
 | `.get_scramble_id(chapter_id)` | 单独取解扰参数（带进程内缓存） |
 | `.get_comments(book_id, *, page=1)` | 评论分页 |
 | `.iter_comments(book_id, *, start=1, limit=None)` | 逐页遍历评论 |
-| `.download(chapter, *, output=..., dest=None, password=None, subsampling=None, ...)` | 下载章节并交付；`password` 给 PDF 加打开密码，`subsampling` 控制页内 JPEG 色度采样 |
+| `.download(chapter, *, output=..., dest=None, password=None, subsampling=0, ...)` | 下载章节并交付；`password` 给 PDF 加打开密码，`subsampling` 控制页内 JPEG 色度采样（默认 4:4:4） |
 | `.picture(chapter, index)` | 构造单张图片定位（1 起算） |
 | `.fetch_picture(picture)` | 取单张图片原始字节 |
 | `.cover_url(book_id, *, size="")` | 封面地址 |

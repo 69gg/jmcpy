@@ -179,7 +179,7 @@ def write_pdf(
     dpi: float = DEFAULT_PDF_DPI,
     quality: int = DEFAULT_JPEG_QUALITY,
     password: str | None = None,
-    subsampling: int | None = None,
+    subsampling: int | None = 0,
 ) -> Path:
     """把若干图片按顺序合成一个 PDF，可选加打开密码。
 
@@ -189,9 +189,9 @@ def write_pdf(
     :param dpi: 页面物理尺寸的换算依据，**每一页**都用它（页宽 = 像素宽 ÷ dpi × 72）
     :param quality: 页内 JPEG 的质量；Pillow 的 PDF 写出统一用 DCTDecode
     :param password: PDF 打开密码（AES-256）
-    :param subsampling: 页内 JPEG 的色度采样，``0``=4:4:4、``1``=4:2:2、``2``=4:2:0；
-        ``None`` 交给编码器（libjpeg 默认 4:2:0）。漫画的彩色描边与文字在 4:2:0 下
-        会发虚，追求画质传 ``0``（体积约 +30%）。
+    :param subsampling: 页内 JPEG 的色度采样，``0``=4:4:4（默认）、``1``=4:2:2、
+        ``2``=4:2:0；``None`` 交给编码器（libjpeg 默认 4:2:0）。漫画的彩色描边与文字
+        在 4:2:0 下会发虚，需要更小体积时才考虑改大。
     """
     if not sources:
         raise ConfigurationError("没有可写入 PDF 的图片")

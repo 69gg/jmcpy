@@ -327,21 +327,14 @@ def test_pdf_output_reuses_existing_file_when_not_overwriting(tmp_path: Path) ->
     assert first.pdf.read_bytes() != b"sentinel"
 
 
-def test_download_pdf_applies_subsampling(tmp_path: Path) -> None:
-    import io
-
-    from pypdf import PdfReader
-
+def test_download_pdf_defaults_to_full_chroma(tmp_path: Path) -> None:
     chapter = make_chapter(count=2)
     source = FakeSource(chapter, {index: image_bytes(make_gradient()) for index in range(1, 3)})
 
-    result = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path, subsampling=0)
+    result = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path)
 
     assert result.pdf is not None
-    with PdfReader(result.pdf) as reader:
-        data = reader.pages[0].images[0].data
-    layer = Image.open(io.BytesIO(data)).layer[0]
-    assert (int(layer[1]), int(layer[2])) == (1, 1)
+    assert first_page_sampling(result.pdf) == (1, 1), "下载链路默认也是 4:4:4"
 
 
 def test_pdf_output_requires_dest() -> None:
@@ -538,26 +531,31 @@ def test_write_pdf_keeps_same_page_scale_for_every_page(tmp_path: Path) -> None:
     assert boxes == {(405.1, 576.0)}, "每一页都要按同一个 DPI 换算物理尺寸"
 
 
-def test_write_pdf_subsampling_controls_chroma_sampling(tmp_path: Path) -> None:
-    """PDF 写出把 subsampling 透传给 JPEG 编码器：0 表示 4:4:4。"""
+def first_page_sampling(path: Path) -> tuple[int, int]:
+    """取 PDF 第一页内嵌 JPEG 的色度采样（1,1=4:4:4；2,2=4:2:0）。"""
     import io
 
     from pypdf import PdfReader
 
+    with PdfReader(path) as reader:
+        data = reader.pages[0].images[0].data
+    layer = Image.open(io.BytesIO(data)).layer[0]
+    return int(layer[1]), int(layer[2])
+
+
+def test_write_pdf_subsampling_defaults_to_full_chroma(tmp_path: Path) -> None:
+    """默认写出 4:4:4；要更小体积可以显式指定，或传 None 交回编码器默认。"""
     source = tmp_path / "page.png"
     make_gradient(80, 60).save(source, format="PNG")
 
     default_pdf = write_pdf([source], tmp_path / "default.pdf", quality=95)
-    chroma_pdf = write_pdf([source], tmp_path / "chroma.pdf", quality=95, subsampling=0)
+    encoder_pdf = write_pdf([source], tmp_path / "encoder.pdf", quality=95, subsampling=None)
+    small_pdf = write_pdf([source], tmp_path / "small.pdf", quality=95, subsampling=2)
 
-    def first_layer_sampling(path: Path) -> tuple[int, int]:
-        with PdfReader(path) as reader:
-            data = reader.pages[0].images[0].data
-        layer = Image.open(io.BytesIO(data)).layer[0]
-        return int(layer[1]), int(layer[2])
-
-    assert first_layer_sampling(default_pdf) == (2, 2), "不指定时用编码器默认（4:2:0）"
-    assert first_layer_sampling(chroma_pdf) == (1, 1), "subsampling=0 应写出 4:4:4"
+    assert first_page_sampling(default_pdf) == (1, 1), "默认 4:4:4"
+    assert first_page_sampling(encoder_pdf) == (2, 2), "None 交给编码器（4:2:0）"
+    assert first_page_sampling(small_pdf) == (2, 2)
+    assert small_pdf.stat().st_size < default_pdf.stat().st_size
 
 
 def test_write_pdf_rejects_empty_input(tmp_path: Path) -> None:
@@ -672,14 +670,16 @@ def test_password_only_makes_sense_for_pdf() -> None:
         download_chapter(source, chapter, output=ExportFormat.BYTES, password="x")
 
 
-def test_subsampling_only_makes_sense_for_pdf() -> None:
+def test_subsampling_is_validated_and_ignored_outside_pdf() -> None:
     chapter = make_chapter(count=1)
     source = FakeSource(chapter, {1: image_bytes(make_image())})
 
-    with pytest.raises(ConfigurationError, match="只对 PDF 输出有意义"):
-        download_chapter(source, chapter, output=ExportFormat.BYTES, subsampling=0)
     with pytest.raises(ConfigurationError, match="subsampling 只能是"):
         download_chapter(source, chapter, output=ExportFormat.PDF, dest="/tmp", subsampling=3)
+
+    # 与 dpi 一样：非 PDF 输出忽略这个参数，不报错
+    result = download_chapter(source, chapter, output=ExportFormat.BYTES, subsampling=0)
+    assert len(result) == 1
 
 
 def test_empty_password_is_rejected() -> None:

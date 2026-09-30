@@ -69,7 +69,7 @@ client.download(
     overwrite=False,  # False 时复用已存在的同名文件
     quality=95,  # 需要重新编码时的质量（JPEG/WebP）
     dpi=150.0,  # PDF 页面分辨率（所有页统一）
-    subsampling=None,  # PDF 页内 JPEG 色度采样：None=编码器默认(4:2:0)、0=4:4:4
+    subsampling=0,  # PDF 页内 JPEG 色度采样：0=4:4:4（默认）、None=编码器默认(4:2:0)
     strict=False,  # True 时只要有失败就抛异常
     on_progress=lambda done, total: print(done, total),
 )
@@ -106,15 +106,20 @@ Pillow 的 PDF 写出统一用 JPEG（`DCTDecode`），所以 `quality` 与 `sub
 页内画质：
 
 - `quality`：JPEG 质量，默认 95；
-- `subsampling`：色度采样，`None` 交给编码器（libjpeg 默认 4:2:0），`0` 为 4:4:4。
-  漫画的彩色描边与文字在 4:2:0 下会发虚、串色，追求画质可传 `0`（体积约 +30%）。
+- `subsampling`：色度采样，**默认 `0`（4:4:4）**——漫画的彩色描边与文字在 4:2:0 下
+  会发虚、串色。需要更小体积时传 `1`（4:2:2）或 `2`（4:2:0，约省 30%），
+  传 `None` 则交回编码器默认（libjpeg 为 4:2:0）。
 
 ```python
-client.download(chapter, output=ExportFormat.PDF, dest="./out", subsampling=0)
+# 默认就是 4:4:4，无需额外参数
+client.download(chapter, output=ExportFormat.PDF, dest="./out")
+
+# 想要更小的文件
+client.download(chapter, output=ExportFormat.PDF, dest="./out", subsampling=2)
 ```
 
-`subsampling` 只在 `PDF` 输出下有意义：其它格式传了会抛 `ConfigurationError`，
-取值只接受 `0`（4:4:4）、`1`（4:2:2）、`2`（4:2:0）。
+`subsampling` 与 `dpi` 一样只影响 `PDF` 输出，其它输出格式会忽略它；取值只接受
+`0`（4:4:4）、`1`（4:2:2）、`2`（4:2:0）或 `None`。
 
 ## 给 PDF 加密码
 

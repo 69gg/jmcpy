@@ -96,7 +96,7 @@ class _Plan:
     #: PDF 打开密码；``None`` 表示不加密
     password: str | None = None
     #: PDF 页内 JPEG 的色度采样；``None`` 交给编码器
-    subsampling: int | None = None
+    subsampling: int | None = 0
 
     @property
     def page_suffix(self) -> str:
@@ -114,7 +114,7 @@ def _make_plan(
     strict: bool,
     chapter: Chapter,
     password: str | None = None,
-    subsampling: int | None = None,
+    subsampling: int | None = 0,
 ) -> _Plan:
     if concurrency is not None and concurrency < 1:
         raise ConfigurationError("concurrency 至少为 1")
@@ -125,11 +125,9 @@ def _make_plan(
             raise ConfigurationError(f"password 只对 PDF 输出有意义，当前输出格式是 {output.value}")
         if not password:
             raise ConfigurationError("PDF 密码不能为空字符串；不需要加密就不要传 password")
-    if subsampling is not None:
-        if output is not ExportFormat.PDF:
-            raise ConfigurationError(f"subsampling 只对 PDF 输出有意义，当前输出格式是 {output.value}")
-        if subsampling not in {0, 1, 2}:
-            raise ConfigurationError("subsampling 只能是 0（4:4:4）、1（4:2:2）或 2（4:2:0）")
+    # subsampling 与 dpi 一样只影响 PDF；其它输出格式忽略它，不报错
+    if subsampling is not None and subsampling not in {0, 1, 2}:
+        raise ConfigurationError("subsampling 只能是 0（4:4:4）、1（4:2:2）、2（4:2:0）或 None（编码器默认）")
 
     target = Path(dest) if dest is not None else None
     if output in {ExportFormat.PATH, ExportFormat.PDF}:
@@ -310,7 +308,7 @@ def download_chapter(
     dpi: float = DEFAULT_PDF_DPI,
     strict: bool = False,
     password: str | None = None,
-    subsampling: int | None = None,
+    subsampling: int | None = 0,
     on_progress: ProgressHook | None = None,
 ) -> ChapterDownload:
     """下载一个章节并按 ``output`` 交付。
@@ -322,7 +320,7 @@ def download_chapter(
     :param overwrite: 已存在的文件是否覆盖（``False`` 时复用已有文件）
     :param strict: 有失败项时是否直接抛异常
     :param password: 给 PDF 加打开密码（仅 ``PDF`` 输出可用；默认 AES-256）
-    :param subsampling: PDF 页内 JPEG 的色度采样（仅 ``PDF`` 输出可用）
+    :param subsampling: PDF 页内 JPEG 的色度采样（只影响 ``PDF`` 输出），默认 ``0``（4:4:4）
     :param on_progress: 进度回调 ``(已完成, 总数)``
     """
     plan = _make_plan(
@@ -376,7 +374,7 @@ async def download_chapter_async(
     dpi: float = DEFAULT_PDF_DPI,
     strict: bool = False,
     password: str | None = None,
-    subsampling: int | None = None,
+    subsampling: int | None = 0,
     on_progress: ProgressHook | None = None,
 ) -> ChapterDownload:
     """异步版的 :func:`download_chapter`（并发用信号量控制）。"""

@@ -475,7 +475,7 @@ class MobileClient(_MobileCore):
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
         password: str | None = None,
-        subsampling: int | None = None,
+        subsampling: int | None = 0,
         on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
         """下载章节并按 ``output`` 交付为 bytes / base64 / 文件 / PDF。
@@ -781,7 +781,7 @@ class AsyncMobileClient(_MobileCore):
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
         password: str | None = None,
-        subsampling: int | None = None,
+        subsampling: int | None = 0,
         on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
         """异步版下载；语义同同步版。"""
