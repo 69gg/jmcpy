@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from .account import Account
+from .artifacts import ChapterDownload, DownloadFailure, PictureArtifact
 from .catalog import BookBrief, ChapterBrief, RelatedBook, Taxonomy
 from .comment import Comment, CommentFeed
 from .detail import Book, Chapter, Picture
@@ -18,10 +19,13 @@ __all__ = [
     "BookBrief",
     "Chapter",
     "ChapterBrief",
+    "ChapterDownload",
     "Comment",
     "CommentFeed",
+    "DownloadFailure",
     "Listing",
     "Picture",
+    "PictureArtifact",
     "RelatedBook",
     "Taxonomy",
 ]

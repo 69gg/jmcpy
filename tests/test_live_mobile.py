@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from jmcpy.clients.mobile import AsyncMobileClient, MobileClient
@@ -57,3 +59,28 @@ async def test_live_async_client() -> None:
     async with AsyncMobileClient() as client:
         listing = await client.search("MANA")
         assert listing.items
+
+
+def test_live_download_pictures_and_pdf(tmp_path: Path) -> None:
+    """只取前两张，验证「取图 → 解码 → 交付」整条链路。"""
+    from dataclasses import replace
+
+    from jmcpy.enums import ExportFormat
+    from jmcpy.models.artifacts import ChapterDownload
+
+    with MobileClient() as client:
+        book = client.get_book(SAMPLE_BOOK_ID)
+        chapter = client.get_chapter(book.chapters[0].chapter_id)
+        sample = replace(chapter, pictures=chapter.pictures[:2])
+
+        raw = client.fetch_picture(client.picture(sample, 1))
+        assert len(raw) > 1024, "图片响应应当有实际内容"
+
+        typed = client.download(sample, output=ExportFormat.BYTES, concurrency=2)
+        assert isinstance(typed, ChapterDownload)
+        assert len(typed) == 2
+        assert all(item.data for item in typed.artifacts)
+
+        as_pdf = client.download(sample, output=ExportFormat.PDF, dest=tmp_path, concurrency=2)
+        assert as_pdf.pdf is not None and as_pdf.pdf.is_file()
+        assert as_pdf.pdf.stat().st_size > 1024

@@ -18,9 +18,12 @@ from typing import Any
 
 from ..credentials import CredentialStore, LoginSession
 from ..endpoints import EndpointSet
-from ..enums import Genre, RankingSpan, SearchTarget, SortBy, SubGenre, TimeRange
+from ..enums import ExportFormat, Genre, RankingSpan, SearchTarget, SortBy, SubGenre, TimeRange
 from ..errors import ConfigurationError
+from ..exporting import download_chapter, download_chapter_async
+from ..imaging import DEFAULT_JPEG_QUALITY, DEFAULT_PDF_DPI
 from ..models import Account, Book, BookBrief, Chapter, CommentFeed, Listing
+from ..models.artifacts import ChapterDownload
 from ..settings import Settings, apply_overrides
 from .mobile import AsyncMobileClient, MobileClient
 from .web import AsyncWebClient, WebClient
@@ -292,6 +295,45 @@ class Client:
         """逐页遍历评论。"""
         return self._mobile.iter_comments(book_id, start=start, limit=limit)
 
+    # ------------------------------------------------------------------ 下载
+    def fetch_picture(self, picture: Any) -> bytes:
+        """取回单张图片的原始字节。"""
+        return self._mobile.fetch_picture(picture)
+
+    def download(
+        self,
+        chapter: Chapter | int | str,
+        *,
+        output: ExportFormat = ExportFormat.PATH,
+        dest: str | Any | None = None,
+        decode: bool = True,
+        concurrency: int | None = None,
+        overwrite: bool = False,
+        quality: int = DEFAULT_JPEG_QUALITY,
+        dpi: float = DEFAULT_PDF_DPI,
+        strict: bool = False,
+        on_progress: Any = None,
+    ) -> ChapterDownload:
+        """下载章节并交付为 bytes / base64 / 文件 / PDF。
+
+        ``chapter`` 可以是 :class:`~jmcpy.models.Chapter`，也可以是章节车号
+        （此时会先取一次章节详情）。
+        """
+        resolved = chapter if isinstance(chapter, Chapter) else self.get_chapter(chapter)
+        return download_chapter(
+            self._mobile,
+            resolved,
+            output=output,
+            dest=dest,
+            decode=decode,
+            concurrency=concurrency,
+            overwrite=overwrite,
+            quality=quality,
+            dpi=dpi,
+            strict=strict,
+            on_progress=on_progress,
+        )
+
     # ------------------------------------------------------------------ 其他
     def cover_url(self, book_id: int | str, *, size: str = "") -> str:
         """封面地址。"""
@@ -518,7 +560,39 @@ class AsyncClient:
         """逐页遍历评论（返回异步迭代器）。"""
         return self._mobile.iter_comments(book_id, start=start, limit=limit)
 
+    # ------------------------------------------------------------------ 下载
+    def fetch_picture(self, picture: Any) -> Any:
+        """返回取图的协程（单张图片的原始字节）。"""
+        return self._mobile.fetch_picture(picture)
+
+    async def download(
+        self,
+        chapter: Chapter | int | str,
+        *,
+        output: ExportFormat = ExportFormat.PATH,
+        dest: Any | None = None,
+        decode: bool = True,
+        concurrency: int | None = None,
+        overwrite: bool = False,
+        quality: int = DEFAULT_JPEG_QUALITY,
+        dpi: float = DEFAULT_PDF_DPI,
+        strict: bool = False,
+        on_progress: Any = None,
+    ) -> ChapterDownload:
+        """异步版下载；语义同同步版。"""
+        resolved = chapter if isinstance(chapter, Chapter) else await self.get_chapter(chapter)
+        return await download_chapter_async(
+            self._mobile,
+            resolved,
+            output=output,
+            dest=dest,
+            decode=decode,
+            concurrency=concurrency,
+            overwrite=overwrite,
+            quality=quality,
+            dpi=dpi,
+            strict=strict,
+            on_progress=on_progress,
+        )
+
     # ------------------------------------------------------------------ 其他
-    def cover_url(self, book_id: int | str, *, size: str = "") -> str:
-        """封面地址。"""
-        return self._mobile.cover_url(book_id, size=size)

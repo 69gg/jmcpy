@@ -35,12 +35,14 @@ from ..constants import (
     PATH_PROFILE,
     PATH_SEARCH,
     PATH_SETTING,
+    PICTURE_HEADERS,
+    PICTURE_URL_TEMPLATE,
 )
 from ..crypto import sign_request, unseal_payload
 from ..endpoints import AsyncEndpointPool, EndpointPool, EndpointSet
 from ..enums import Genre, RankingSpan, SearchTarget, SortBy, TimeRange
 from ..errors import ApiRejected, AuthRejected, InvalidArgument, JmcpyError, NotFound, ResponseInvalid
-from ..models import Account, Book, BookBrief, Chapter, CommentFeed, Listing
+from ..models import Account, Book, BookBrief, Chapter, CommentFeed, Listing, Picture
 from ..parsing import (
     parse_account,
     parse_book_detail,
@@ -169,6 +171,16 @@ class _MobileCore:
         if version and version != self._version:
             logger.info("接口版本从 %s 更新为 %s", self._version, version)
             self._version = version
+
+    def _picture_endpoints(self) -> tuple[str, ...]:
+        """把当前 CDN 端点排在首位，其余作为切换备选。"""
+        current = (self._cdn_endpoint,) if self._cdn_endpoint else ()
+        return current + tuple(item for item in self._settings.cdn_endpoints if item != self._cdn_endpoint)
+
+    def _picture_headers(self) -> dict[str, str]:
+        headers = dict(PICTURE_HEADERS)
+        headers["user-agent"] = self._settings.user_agent or DEFAULT_MOBILE_USER_AGENT
+        return headers
 
     def _listing(self, payload: Mapping[str, Any], page: int) -> Listing[BookBrief]:
         return parse_book_listing(payload, page=page, cdn_endpoint=self._cdn_endpoint)
@@ -411,7 +423,42 @@ class MobileClient(_MobileCore):
         self._scramble_cache[cid] = value
         return value
 
+    # ------------------------------------------------------------------ 图片
+    def picture(self, chapter: Chapter, index: int) -> Picture:
+        """按章节与序号构造图片定位（使用当前 CDN 端点）。"""
+        return chapter.picture(index, self._cdn_endpoint)
+
+    def fetch_picture(self, picture: Picture) -> bytes:
+        """取回图片原始字节。
+
+        失败会在 CDN 端点之间切换重试；服务端偶发返回空响应时，带上时间戳再试一次。
+        """
+        self._prepare()
+        template = PICTURE_URL_TEMPLATE.format(
+            endpoint="{endpoint}", chapter_id=picture.chapter_id, filename=picture.filename
+        )
+        endpoints = self._picture_endpoints()
+        data = self._fetch_picture_once(template, endpoints, None)
+        if not data:
+            data = self._fetch_picture_once(template, endpoints, {"v": int(time.time())})
+        if not data:
+            raise ResponseInvalid("图片响应为空（带时间戳重试后仍为空）", url=picture.url)
+        return data
+
+    def _fetch_picture_once(self, template: str, endpoints: tuple[str, ...], params: Mapping[str, Any] | None) -> bytes:
+        reply = self._session.send(
+            "GET",
+            template,
+            params=params,
+            headers=self._picture_headers(),
+            timeout=self._settings.image_timeout,
+            endpoints=endpoints,
+            retry_times=1,
+        )
+        return reply.content
+
     # ------------------------------------------------------------------ 评论
+
     def get_comments(self, book_id: int | str, *, page: int = 1) -> CommentFeed:
         """本子评论分页（含回评与剧透标记）。"""
         payload = self._api(PATH_COMMENTS, params={"mode": "all", "page": page, "aid": resolve_book_id(book_id)})
@@ -642,6 +689,39 @@ class AsyncMobileClient(_MobileCore):
         value = parse_scramble_id(reply.text)
         self._scramble_cache[cid] = value
         return value
+
+    # ------------------------------------------------------------------ 图片
+    def picture(self, chapter: Chapter, index: int) -> Picture:
+        """按章节与序号构造图片定位（使用当前 CDN 端点）。"""
+        return chapter.picture(index, self._cdn_endpoint)
+
+    async def fetch_picture(self, picture: Picture) -> bytes:
+        """取回图片原始字节（语义同同步版）。"""
+        await self._prepare()
+        template = PICTURE_URL_TEMPLATE.format(
+            endpoint="{endpoint}", chapter_id=picture.chapter_id, filename=picture.filename
+        )
+        endpoints = self._picture_endpoints()
+        data = await self._fetch_picture_once(template, endpoints, None)
+        if not data:
+            data = await self._fetch_picture_once(template, endpoints, {"v": int(time.time())})
+        if not data:
+            raise ResponseInvalid("图片响应为空（带时间戳重试后仍为空）", url=picture.url)
+        return data
+
+    async def _fetch_picture_once(
+        self, template: str, endpoints: tuple[str, ...], params: Mapping[str, Any] | None
+    ) -> bytes:
+        reply = await self._session.send(
+            "GET",
+            template,
+            params=params,
+            headers=self._picture_headers(),
+            timeout=self._settings.image_timeout,
+            endpoints=endpoints,
+            retry_times=1,
+        )
+        return reply.content
 
     # ------------------------------------------------------------------ 评论
     async def get_comments(self, book_id: int | str, *, page: int = 1) -> CommentFeed:
