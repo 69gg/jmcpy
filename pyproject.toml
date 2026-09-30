@@ -37,7 +37,12 @@ httpx = ["httpx>=0.27"]
 # 把会话加密密钥交给操作系统钥匙串保管
 keyring = ["keyring>=24"]
 all = ["httpx>=0.27", "keyring>=24"]
+
+# 开发依赖用 PEP 735 的依赖组：uv run / uv sync 默认就会装上，
+# 不会像 optional-extra 那样在下一次 uv run 时被当成多余的包清掉。
+[dependency-groups]
 dev = [
+    # 测试要用到两种传输后端与钥匙串分支
     "httpx>=0.27",
     "keyring>=24",
     "mypy>=1.14",
