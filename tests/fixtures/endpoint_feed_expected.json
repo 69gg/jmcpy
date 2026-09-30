@@ -1,0 +1,36 @@
+{
+  "Setting": [
+    "www.cdnhjk.net",
+    "www.cdngwc.cc",
+    "www.cdngwc.net",
+    "www.cdngwc.club"
+  ],
+  "Server": [
+    "www.cdnhjk.net",
+    "www.cdngwc.cc",
+    "www.cdngwc.net",
+    "www.cdngwc.club"
+  ],
+  "jm3_Server": [
+    [
+      "www.cdnhjk.net",
+      "線路1"
+    ],
+    [
+      "www.cdngwc.cc",
+      "線路2"
+    ],
+    [
+      "www.cdngwc.net",
+      "線路3"
+    ],
+    [
+      "www.cdngwc.club",
+      "線路4"
+    ],
+    [
+      "www.cdnutc.me",
+      "線路5"
+    ]
+  ]
+}
