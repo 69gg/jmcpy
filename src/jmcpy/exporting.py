@@ -95,6 +95,8 @@ class _Plan:
     strict: bool
     #: PDF 打开密码；``None`` 表示不加密
     password: str | None = None
+    #: PDF 页内 JPEG 的色度采样；``None`` 交给编码器
+    subsampling: int | None = None
 
     @property
     def page_suffix(self) -> str:
@@ -112,6 +114,7 @@ def _make_plan(
     strict: bool,
     chapter: Chapter,
     password: str | None = None,
+    subsampling: int | None = None,
 ) -> _Plan:
     if concurrency is not None and concurrency < 1:
         raise ConfigurationError("concurrency 至少为 1")
@@ -122,6 +125,11 @@ def _make_plan(
             raise ConfigurationError(f"password 只对 PDF 输出有意义，当前输出格式是 {output.value}")
         if not password:
             raise ConfigurationError("PDF 密码不能为空字符串；不需要加密就不要传 password")
+    if subsampling is not None:
+        if output is not ExportFormat.PDF:
+            raise ConfigurationError(f"subsampling 只对 PDF 输出有意义，当前输出格式是 {output.value}")
+        if subsampling not in {0, 1, 2}:
+            raise ConfigurationError("subsampling 只能是 0（4:4:4）、1（4:2:2）或 2（4:2:0）")
 
     target = Path(dest) if dest is not None else None
     if output in {ExportFormat.PATH, ExportFormat.PDF}:
@@ -140,12 +148,23 @@ def _make_plan(
         dpi=dpi,
         strict=strict,
         password=password,
+        subsampling=subsampling,
     )
 
 
 def chapter_dir_name(chapter: Chapter) -> str:
     """章节在磁盘上的目录名（标题净化后退化为车号）。"""
     return sanitize_filename(chapter.title) or f"JM{chapter.chapter_id}"
+
+
+def chapter_pdf_name(chapter: Chapter) -> str:
+    """章节 PDF 的文件名。
+
+    带上章节号：标题相同的两个章节不会再互相覆盖，同一目录下也能看出是哪一章。
+    """
+    title = sanitize_filename(chapter.title)
+    stem = f"JM{chapter.chapter_id} {title}".strip() if title else f"JM{chapter.chapter_id}"
+    return f"{stem}.pdf"
 
 
 @contextmanager
@@ -253,13 +272,16 @@ def _finalize(
 ) -> ChapterDownload:
     pdf_path: Path | None = None
     if plan.output is ExportFormat.PDF and artifacts and page_dir is not None and plan.work_dir is not None:
-        pdf_path = write_pdf(
-            [page_dir / f"{item.index:05d}{plan.page_suffix}" for item in artifacts],
-            plan.work_dir / f"{chapter_dir_name(chapter)}.pdf",
-            dpi=plan.dpi,
-            quality=plan.quality,
-            password=plan.password,
-        )
+        pdf_path = plan.work_dir / chapter_pdf_name(chapter)
+        if plan.overwrite or not pdf_path.exists():
+            write_pdf(
+                [page_dir / f"{item.index:05d}{plan.page_suffix}" for item in artifacts],
+                pdf_path,
+                dpi=plan.dpi,
+                quality=plan.quality,
+                password=plan.password,
+                subsampling=plan.subsampling,
+            )
 
     result = ChapterDownload(
         chapter_id=chapter.chapter_id,
@@ -288,6 +310,7 @@ def download_chapter(
     dpi: float = DEFAULT_PDF_DPI,
     strict: bool = False,
     password: str | None = None,
+    subsampling: int | None = None,
     on_progress: ProgressHook | None = None,
 ) -> ChapterDownload:
     """下载一个章节并按 ``output`` 交付。
@@ -299,9 +322,12 @@ def download_chapter(
     :param overwrite: 已存在的文件是否覆盖（``False`` 时复用已有文件）
     :param strict: 有失败项时是否直接抛异常
     :param password: 给 PDF 加打开密码（仅 ``PDF`` 输出可用；默认 AES-256）
+    :param subsampling: PDF 页内 JPEG 的色度采样（仅 ``PDF`` 输出可用）
     :param on_progress: 进度回调 ``(已完成, 总数)``
     """
-    plan = _make_plan(output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter, password)
+    plan = _make_plan(
+        output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter, password, subsampling
+    )
     indices = range(1, len(chapter.pictures) + 1)
     artifacts: list[PictureArtifact] = []
     failures: list[DownloadFailure] = []
@@ -350,10 +376,13 @@ async def download_chapter_async(
     dpi: float = DEFAULT_PDF_DPI,
     strict: bool = False,
     password: str | None = None,
+    subsampling: int | None = None,
     on_progress: ProgressHook | None = None,
 ) -> ChapterDownload:
     """异步版的 :func:`download_chapter`（并发用信号量控制）。"""
-    plan = _make_plan(output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter, password)
+    plan = _make_plan(
+        output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter, password, subsampling
+    )
     indices = list(range(1, len(chapter.pictures) + 1))
     artifacts: list[PictureArtifact] = []
     failures: list[DownloadFailure] = []

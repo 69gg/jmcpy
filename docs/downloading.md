@@ -68,7 +68,8 @@ client.download(
     concurrency=8,  # 并发下载数，默认取 Settings.concurrency
     overwrite=False,  # False 时复用已存在的同名文件
     quality=95,  # 需要重新编码时的质量（JPEG/WebP）
-    dpi=150.0,  # PDF 页面分辨率
+    dpi=150.0,  # PDF 页面分辨率（所有页统一）
+    subsampling=None,  # PDF 页内 JPEG 色度采样：None=编码器默认(4:2:0)、0=4:4:4
     strict=False,  # True 时只要有失败就抛异常
     on_progress=lambda done, total: print(done, total),
 )
@@ -88,7 +89,7 @@ dest/
     └── ...
 PDF 模式：
 dest/
-└── 章节标题.pdf
+└── JM<章节号> 章节标题.pdf   # 标题为空时为 JM<章节号>.pdf
 ```
 
 标题会做跨平台净化：非法字符（`<>:"/\|?*` 与控制字符）替换为下划线、折叠空白、
@@ -96,6 +97,24 @@ dest/
 
 PDF 合成是**逐页追加**写入的，同一时刻内存里只有一张图片，因此章节有几百张图也
 不会把内存吃满；中间页文件放在 `dest/.jmcpy-pages-*` 临时目录里，结束后自动清理。
+每一页都按 `dpi` 换算物理尺寸（页宽 = 像素宽 ÷ dpi × 72），同一份 PDF 里页面比例
+一致；`overwrite=False` 时如果目标 PDF 已存在会直接复用，不再重新合成。
+
+## PDF 页内画质
+
+Pillow 的 PDF 写出统一用 JPEG（`DCTDecode`），所以 `quality` 与 `subsampling` 决定
+页内画质：
+
+- `quality`：JPEG 质量，默认 95；
+- `subsampling`：色度采样，`None` 交给编码器（libjpeg 默认 4:2:0），`0` 为 4:4:4。
+  漫画的彩色描边与文字在 4:2:0 下会发虚、串色，追求画质可传 `0`（体积约 +30%）。
+
+```python
+client.download(chapter, output=ExportFormat.PDF, dest="./out", subsampling=0)
+```
+
+`subsampling` 只在 `PDF` 输出下有意义：其它格式传了会抛 `ConfigurationError`，
+取值只接受 `0`（4:4:4）、`1`（4:2:2）、`2`（4:2:0）。
 
 ## 给 PDF 加密码
 

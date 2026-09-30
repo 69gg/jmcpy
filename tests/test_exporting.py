@@ -282,6 +282,68 @@ def test_pdf_output_has_one_page_per_image(tmp_path: Path) -> None:
     assert not list(tmp_path.glob(".jmcpy-pages-*")), "临时目录应当被清理"
 
 
+def test_pdf_output_name_includes_chapter_id(tmp_path: Path) -> None:
+    first = make_chapter(count=1)
+    second = Chapter(
+        chapter_id=first.chapter_id + 1,
+        book_id=first.book_id,
+        title=first.title,
+        order=2,
+        pictures=("00001.png",),
+    )
+
+    result_a = download_chapter(
+        FakeSource(first, {1: image_bytes(make_image(color=(1, 2, 3)))}),
+        first,
+        output=ExportFormat.PDF,
+        dest=tmp_path,
+    )
+    result_b = download_chapter(
+        FakeSource(second, {1: image_bytes(make_image(color=(9, 8, 7)))}),
+        second,
+        output=ExportFormat.PDF,
+        dest=tmp_path,
+    )
+
+    assert result_a.pdf is not None and result_b.pdf is not None
+    assert result_a.pdf.name == f"JM{first.chapter_id} {first.title}.pdf"
+    assert result_a.pdf != result_b.pdf, "标题相同的章节不能互相覆盖"
+    assert result_a.pdf.is_file() and result_b.pdf.is_file()
+
+
+def test_pdf_output_reuses_existing_file_when_not_overwriting(tmp_path: Path) -> None:
+    chapter = make_chapter(count=1)
+    source = FakeSource(chapter, {1: image_bytes(make_image())})
+
+    first = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path)
+    assert first.pdf is not None
+    first.pdf.write_bytes(b"sentinel")
+
+    second = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path)
+    assert second.pdf == first.pdf
+    assert second.pdf.read_bytes() == b"sentinel", "overwrite=False 时复用已有文件"
+
+    download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path, overwrite=True)
+    assert first.pdf.read_bytes() != b"sentinel"
+
+
+def test_download_pdf_applies_subsampling(tmp_path: Path) -> None:
+    import io
+
+    from pypdf import PdfReader
+
+    chapter = make_chapter(count=2)
+    source = FakeSource(chapter, {index: image_bytes(make_gradient()) for index in range(1, 3)})
+
+    result = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path, subsampling=0)
+
+    assert result.pdf is not None
+    with PdfReader(result.pdf) as reader:
+        data = reader.pages[0].images[0].data
+    layer = Image.open(io.BytesIO(data)).layer[0]
+    assert (int(layer[1]), int(layer[2])) == (1, 1)
+
+
 def test_pdf_output_requires_dest() -> None:
     chapter = make_chapter(count=1)
 
@@ -457,6 +519,47 @@ def test_write_pdf_appends_pages_from_files(tmp_path: Path) -> None:
     assert count_pdf_pages(output) == 3
 
 
+def test_write_pdf_keeps_same_page_scale_for_every_page(tmp_path: Path) -> None:
+    """回归：追加页曾丢掉 resolution 而退回 72 DPI，导致第一页之后页面大了一倍。"""
+    from pypdf import PdfReader
+
+    sources = []
+    for index in range(3):
+        path = tmp_path / f"{index}.png"
+        make_image(width=844, height=1200, color=(index * 40, 10, 10)).save(path, format="PNG")
+        sources.append(path)
+
+    output = write_pdf(sources, tmp_path / "out.pdf", dpi=150.0)
+
+    boxes = {
+        (round(float(page.mediabox.width), 1), round(float(page.mediabox.height), 1))
+        for page in PdfReader(output).pages
+    }
+    assert boxes == {(405.1, 576.0)}, "每一页都要按同一个 DPI 换算物理尺寸"
+
+
+def test_write_pdf_subsampling_controls_chroma_sampling(tmp_path: Path) -> None:
+    """PDF 写出把 subsampling 透传给 JPEG 编码器：0 表示 4:4:4。"""
+    import io
+
+    from pypdf import PdfReader
+
+    source = tmp_path / "page.png"
+    make_gradient(80, 60).save(source, format="PNG")
+
+    default_pdf = write_pdf([source], tmp_path / "default.pdf", quality=95)
+    chroma_pdf = write_pdf([source], tmp_path / "chroma.pdf", quality=95, subsampling=0)
+
+    def first_layer_sampling(path: Path) -> tuple[int, int]:
+        with PdfReader(path) as reader:
+            data = reader.pages[0].images[0].data
+        layer = Image.open(io.BytesIO(data)).layer[0]
+        return int(layer[1]), int(layer[2])
+
+    assert first_layer_sampling(default_pdf) == (2, 2), "不指定时用编码器默认（4:2:0）"
+    assert first_layer_sampling(chroma_pdf) == (1, 1), "subsampling=0 应写出 4:4:4"
+
+
 def test_write_pdf_rejects_empty_input(tmp_path: Path) -> None:
     with pytest.raises(ConfigurationError, match="没有可写入 PDF"):
         write_pdf([], tmp_path / "out.pdf")
@@ -567,6 +670,16 @@ def test_password_only_makes_sense_for_pdf() -> None:
 
     with pytest.raises(ConfigurationError, match="只对 PDF 输出有意义"):
         download_chapter(source, chapter, output=ExportFormat.BYTES, password="x")
+
+
+def test_subsampling_only_makes_sense_for_pdf() -> None:
+    chapter = make_chapter(count=1)
+    source = FakeSource(chapter, {1: image_bytes(make_image())})
+
+    with pytest.raises(ConfigurationError, match="只对 PDF 输出有意义"):
+        download_chapter(source, chapter, output=ExportFormat.BYTES, subsampling=0)
+    with pytest.raises(ConfigurationError, match="subsampling 只能是"):
+        download_chapter(source, chapter, output=ExportFormat.PDF, dest="/tmp", subsampling=3)
 
 
 def test_empty_password_is_rejected() -> None:

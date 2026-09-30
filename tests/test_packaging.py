@@ -21,7 +21,7 @@ def test_version_is_declared_in_pyproject() -> None:
     project = document["project"]
     assert isinstance(project, dict)
 
-    assert project["version"] == "0.1.1"
+    assert project["version"] == "0.1.2"
     assert "version" not in set(project.get("dynamic", []))
 
 

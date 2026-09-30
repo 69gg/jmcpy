@@ -141,7 +141,7 @@ with Client() as client:
 ```
 
 细节见 [docs/downloading.md](docs/downloading.md)：并发、是否还原、覆盖策略、质量、
-PDF 分辨率、失败收集与进度回调都在那里。
+PDF 分辨率与页内色度采样、失败收集与进度回调都在那里。
 
 ## 配置
 

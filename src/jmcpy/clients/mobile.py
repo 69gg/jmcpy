@@ -475,12 +475,14 @@ class MobileClient(_MobileCore):
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
         password: str | None = None,
+        subsampling: int | None = None,
         on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
         """下载章节并按 ``output`` 交付为 bytes / base64 / 文件 / PDF。
 
         ``chapter`` 可以是 :class:`~jmcpy.models.Chapter`，也可以是章节车号
-        （此时会先取一次章节详情）。``password`` 用于给 PDF 加打开密码。
+        （此时会先取一次章节详情）。``password`` 用于给 PDF 加打开密码，
+        ``subsampling`` 控制 PDF 页内 JPEG 的色度采样（``0`` 为 4:4:4）。
         """
         resolved = chapter if isinstance(chapter, Chapter) else self.get_chapter(chapter)
         return download_chapter(
@@ -495,6 +497,7 @@ class MobileClient(_MobileCore):
             dpi=dpi,
             strict=strict,
             password=password,
+            subsampling=subsampling,
             on_progress=on_progress,
         )
 
@@ -778,6 +781,7 @@ class AsyncMobileClient(_MobileCore):
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
         password: str | None = None,
+        subsampling: int | None = None,
         on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
         """异步版下载；语义同同步版。"""
@@ -794,6 +798,7 @@ class AsyncMobileClient(_MobileCore):
             dpi=dpi,
             strict=strict,
             password=password,
+            subsampling=subsampling,
             on_progress=on_progress,
         )
 

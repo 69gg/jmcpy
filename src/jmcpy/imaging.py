@@ -179,23 +179,37 @@ def write_pdf(
     dpi: float = DEFAULT_PDF_DPI,
     quality: int = DEFAULT_JPEG_QUALITY,
     password: str | None = None,
+    subsampling: int | None = None,
 ) -> Path:
     """把若干图片按顺序合成一个 PDF，可选加打开密码。
 
     逐页追加写入，因此合成阶段同一时刻内存里只有一张图片——章节图片动辄上百张，
     一次性全部载入容易把内存打满。加密是合成之后的单独一遍（见 :func:`encrypt_pdf`）。
+
+    :param dpi: 页面物理尺寸的换算依据，**每一页**都用它（页宽 = 像素宽 ÷ dpi × 72）
+    :param quality: 页内 JPEG 的质量；Pillow 的 PDF 写出统一用 DCTDecode
+    :param password: PDF 打开密码（AES-256）
+    :param subsampling: 页内 JPEG 的色度采样，``0``=4:4:4、``1``=4:2:2、``2``=4:2:0；
+        ``None`` 交给编码器（libjpeg 默认 4:2:0）。漫画的彩色描边与文字在 4:2:0 下
+        会发虚，追求画质传 ``0``（体积约 +30%）。
     """
     if not sources:
         raise ConfigurationError("没有可写入 PDF 的图片")
 
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    page_options: dict[str, int] = {"quality": quality}
+    if subsampling is not None:
+        page_options["subsampling"] = subsampling
+
+    # resolution 必须逐页传：Pillow 的追加写出不会沿用上一页的页面尺寸，
+    # 漏掉就退回默认 72 DPI（页宽变成像素数），同一份 PDF 里页面大小不一致。
     with open(output, "w+b") as handle, Image.open(sources[0]) as image:
-        _normalize_for_pdf(image).save(handle, "PDF", resolution=dpi, quality=quality, save_all=True)
+        _normalize_for_pdf(image).save(handle, "PDF", resolution=dpi, save_all=True, **page_options)
 
     for source in sources[1:]:
         with open(output, "r+b") as handle, Image.open(source) as image:
-            _normalize_for_pdf(image).save(handle, "PDF", append=True, quality=quality)
+            _normalize_for_pdf(image).save(handle, "PDF", append=True, resolution=dpi, **page_options)
 
     if password is not None:
         encrypt_pdf(output, password)

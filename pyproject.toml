@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jmcpy"
-version = "0.1.1"
+version = "0.1.2"
 description = "禁漫天堂 Python SDK：搜索、评论、分类排行、章节详情与图片下载解码"
 readme = "README.md"
 requires-python = ">=3.11"
