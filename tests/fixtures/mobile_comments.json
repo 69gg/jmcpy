@@ -1,0 +1,353 @@
+{
+  "list": [
+    {
+      "AID": "1472715",
+      "BID": null,
+      "CID": "11092075",
+      "NID": null,
+      "NCID": null,
+      "UID": "3339546",
+      "username": "示例username",
+      "nickname": "示例nickname",
+      "likes": "0",
+      "gender": "示例gender",
+      "update_at": "0",
+      "addtime": "Sep 27, 2026",
+      "parent_CID": "0",
+      "expinfo": {
+        "level_name": "示例level_name",
+        "level": 5,
+        "nextLevelExp": 4200,
+        "exp": "示例exp",
+        "expPercent": 84.35714285714285,
+        "uid": "3339546",
+        "badges": []
+      },
+      "name": "示例name",
+      "content": "示例content",
+      "photo": "示例photo",
+      "spoiler": "1"
+    },
+    {
+      "AID": "1472715",
+      "BID": null,
+      "CID": "11089229",
+      "NID": null,
+      "NCID": null,
+      "UID": "21777684",
+      "username": "示例username",
+      "nickname": "示例nickname",
+      "likes": "0",
+      "gender": "示例gender",
+      "update_at": "0",
+      "addtime": "Sep 26, 2026",
+      "parent_CID": "0",
+      "expinfo": {
+        "level_name": "示例level_name",
+        "level": 4,
+        "nextLevelExp": 2100,
+        "exp": "示例exp",
+        "expPercent": 69,
+        "uid": "21777684",
+        "badges": []
+      },
+      "name": "示例name",
+      "content": "示例content",
+      "photo": "示例photo",
+      "spoiler": "1",
+      "replys": [
+        {
+          "CID": "11092360",
+          "UID": "20609688",
+          "username": "示例username",
+          "nickname": "示例nickname",
+          "likes": "0",
+          "gender": "示例gender",
+          "update_at": "1772157375",
+          "addtime": "Sep 27, 2026",
+          "parent_CID": "11089229",
+          "photo": "示例photo",
+          "content": "示例content",
+          "expinfo": {
+            "level_name": "示例level_name",
+            "level": 12,
+            "nextLevelExp": 82216,
+            "exp": "示例exp",
+            "expPercent": 104.78009146638124,
+            "uid": "20609688",
+            "badges": [
+              {
+                "content": "示例content",
+                "name": "示例name",
+                "id": "609"
+              },
+              {
+                "content": "示例content",
+                "name": "示例name",
+                "id": "612"
+              },
+              {
+                "content": "示例content",
+                "name": "示例name",
+                "id": "616"
+              },
+              {
+                "content": "示例content",
+                "name": "示例name",
+                "id": "619"
+              },
+              {
+                "content": "示例content",
+                "name": "示例name",
+                "id": "277"
+              }
+            ]
+          },
+          "spoiler": "1"
+        }
+      ]
+    },
+    {
+      "AID": "1472715",
+      "BID": null,
+      "CID": "11088084",
+      "NID": null,
+      "NCID": null,
+      "UID": "20436337",
+      "username": "示例username",
+      "nickname": "示例nickname",
+      "likes": "0",
+      "gender": "示例gender",
+      "update_at": "0",
+      "addtime": "Sep 26, 2026",
+      "parent_CID": "0",
+      "expinfo": {
+        "level_name": "示例level_name",
+        "level": 4,
+        "nextLevelExp": 2100,
+        "exp": "示例exp",
+        "expPercent": 53.047619047619044,
+        "uid": "20436337",
+        "badges": []
+      },
+      "name": "示例name",
+      "content": "示例content",
+      "photo": "示例photo",
+      "spoiler": "1",
+      "replys": [
+        {
+          "CID": "11098264",
+          "UID": "3376349",
+          "username": "示例username",
+          "nickname": "示例nickname",
+          "likes": "0",
+          "gender": "示例gender",
+          "update_at": "1690650209",
+          "addtime": "Sep 28, 2026",
+          "parent_CID": "11088084",
+          "photo": "示例photo",
+          "content": "示例content",
+          "expinfo": {
+            "level_name": "示例level_name",
+            "level": 6,
+            "nextLevelExp": 9450,
+            "exp": "示例exp",
+            "expPercent": 99.5873015873016,
+            "uid": "3376349",
+            "badges": [
+              {
+                "content": "示例content",
+                "name": "示例name",
+                "id": "222"
+              }
+            ]
+          },
+          "spoiler": "1"
+        }
+      ]
+    },
+    {
+      "AID": "1472715",
+      "BID": null,
+      "CID": "11063904",
+      "NID": null,
+      "NCID": null,
+      "UID": "8848136",
+      "username": "示例username",
+      "nickname": "示例nickname",
+      "likes": "0",
+      "gender": "示例gender",
+      "update_at": "0",
+      "addtime": "Sep 19, 2026",
+      "parent_CID": "0",
+      "expinfo": {
+        "level_name": "示例level_name",
+        "level": 5,
+        "nextLevelExp": 4200,
+        "exp": "示例exp",
+        "expPercent": 78.4047619047619,
+        "uid": "8848136",
+        "badges": []
+      },
+      "name": "示例name",
+      "content": "示例content",
+      "photo": "示例photo",
+      "spoiler": "1",
+      "replys": [
+        {
+          "CID": "11064655",
+          "UID": "13995271",
+          "username": "示例username",
+          "nickname": "示例nickname",
+          "likes": "0",
+          "gender": "示例gender",
+          "update_at": "0",
+          "addtime": "Sep 19, 2026",
+          "parent_CID": "11063904",
+          "photo": "示例photo",
+          "content": "示例content",
+          "expinfo": {
+            "level_name": "示例level_name",
+            "level": 5,
+            "nextLevelExp": 4200,
+            "exp": "示例exp",
+            "expPercent": 95.66666666666667,
+            "uid": "13995271",
+            "badges": []
+          },
+          "spoiler": "1"
+        }
+      ]
+    },
+    {
+      "AID": "1472715",
+      "BID": null,
+      "CID": "11059411",
+      "NID": null,
+      "NCID": null,
+      "UID": "9557239",
+      "username": "示例username",
+      "nickname": "示例nickname",
+      "likes": "0",
+      "gender": "示例gender",
+      "update_at": "0",
+      "addtime": "Sep 18, 2026",
+      "parent_CID": "0",
+      "expinfo": {
+        "level_name": "示例level_name",
+        "level": 6,
+        "nextLevelExp": 9450,
+        "exp": "示例exp",
+        "expPercent": 61.978835978835974,
+        "uid": "9557239",
+        "badges": []
+      },
+      "name": "示例name",
+      "content": "示例content",
+      "photo": "示例photo",
+      "spoiler": "1",
+      "replys": [
+        {
+          "CID": "11068262",
+          "UID": "810006",
+          "username": "示例username",
+          "nickname": "示例nickname",
+          "likes": "0",
+          "gender": "示例gender",
+          "update_at": "0",
+          "addtime": "Sep 20, 2026",
+          "parent_CID": "11059411",
+          "photo": "示例photo",
+          "content": "示例content",
+          "expinfo": {
+            "level_name": "示例level_name",
+            "level": 7,
+            "nextLevelExp": 14175,
+            "exp": "示例exp",
+            "expPercent": 85.84126984126983,
+            "uid": "810006",
+            "badges": []
+          },
+          "spoiler": "1"
+        },
+        {
+          "CID": "11081629",
+          "UID": "15200641",
+          "username": "示例username",
+          "nickname": "示例nickname",
+          "likes": "0",
+          "gender": "示例gender",
+          "update_at": "0",
+          "addtime": "Sep 24, 2026",
+          "parent_CID": "11059411",
+          "photo": "示例photo",
+          "content": "示例content",
+          "expinfo": {
+            "level_name": "示例level_name",
+            "level": 5,
+            "nextLevelExp": 4200,
+            "exp": "示例exp",
+            "expPercent": 91.07142857142857,
+            "uid": "15200641",
+            "badges": []
+          },
+          "spoiler": "1"
+        }
+      ]
+    },
+    {
+      "AID": "1472715",
+      "BID": null,
+      "CID": "11056190",
+      "NID": null,
+      "NCID": null,
+      "UID": "4236107",
+      "username": "示例username",
+      "nickname": "示例nickname",
+      "likes": "0",
+      "gender": "示例gender",
+      "update_at": "0",
+      "addtime": "Sep 17, 2026",
+      "parent_CID": "0",
+      "expinfo": {
+        "level_name": "示例level_name",
+        "level": 6,
+        "nextLevelExp": 9450,
+        "exp": "示例exp",
+        "expPercent": 90.98412698412699,
+        "uid": "4236107",
+        "badges": []
+      },
+      "name": "示例name",
+      "content": "示例content",
+      "photo": "示例photo",
+      "spoiler": "1",
+      "replys": [
+        {
+          "CID": "11061335",
+          "UID": "12089171",
+          "username": "示例username",
+          "nickname": "示例nickname",
+          "likes": "0",
+          "gender": "示例gender",
+          "update_at": "0",
+          "addtime": "Sep 18, 2026",
+          "parent_CID": "11056190",
+          "photo": "示例photo",
+          "content": "示例content",
+          "expinfo": {
+            "level_name": "示例level_name",
+            "level": 6,
+            "nextLevelExp": 9450,
+            "exp": "示例exp",
+            "expPercent": 59.883597883597886,
+            "uid": "12089171",
+            "badges": []
+          },
+          "spoiler": "1"
+        }
+      ]
+    }
+  ],
+  "total": "17"
+}

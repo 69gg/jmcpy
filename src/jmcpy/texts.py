@@ -6,6 +6,8 @@ import re
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
+from .errors import InvalidArgument
+
 __all__ = [
     "host_of",
     "html_to_text",
@@ -75,15 +77,15 @@ def normalize_book_id(value: int | str) -> str:
     以及 ``"https://…/album/1472715"``、``"…/photo/1472715"``、``"…?id=1472715"``。
     """
     if isinstance(value, bool):
-        raise ValueError(f"无法解析车号: {value!r}")
+        raise InvalidArgument(f"无法解析车号: {value!r}")
     if isinstance(value, int):
         if value <= 0:
-            raise ValueError(f"车号必须为正整数: {value}")
+            raise InvalidArgument(f"车号必须为正整数: {value}")
         return str(value)
 
     text = value.strip()
     if not text:
-        raise ValueError("车号为空")
+        raise InvalidArgument("车号为空")
 
     upper = text.upper()
     if upper.startswith("JM"):
@@ -96,7 +98,7 @@ def normalize_book_id(value: int | str) -> str:
         if match:
             return match.group(1)
 
-    raise ValueError(f"无法从 {value!r} 解析出车号")
+    raise InvalidArgument(f"无法从 {value!r} 解析出车号")
 
 
 def host_of(url: str) -> str:

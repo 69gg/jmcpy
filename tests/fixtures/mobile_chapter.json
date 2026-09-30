@@ -1,0 +1,34 @@
+{
+  "id": 1114751,
+  "series": [
+    {
+      "id": "1114751",
+      "name": "示例name",
+      "sort": "1"
+    },
+    {
+      "id": "146418",
+      "name": "示例name",
+      "sort": "2"
+    },
+    {
+      "id": "146419",
+      "name": "示例name",
+      "sort": "3"
+    }
+  ],
+  "tags": "示例tags",
+  "name": "示例name",
+  "images": [
+    "00001.webp",
+    "00002.webp",
+    "00003.webp",
+    "00004.webp",
+    "00005.webp"
+  ],
+  "addtime": "1790347194",
+  "real_link": "",
+  "series_id": "1114751",
+  "is_favorite": false,
+  "liked": false
+}

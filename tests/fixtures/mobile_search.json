@@ -1,0 +1,66 @@
+{
+  "search_query": "MANA",
+  "search_type": "site",
+  "y": 0,
+  "m": 0,
+  "total": 261,
+  "content": [
+    {
+      "id": "1472715",
+      "author": "示例author",
+      "description": null,
+      "name": "示例name",
+      "image": "",
+      "category": {
+        "id": "1",
+        "title": "示例title"
+      },
+      "category_sub": {
+        "id": "3",
+        "title": "示例title"
+      },
+      "liked": false,
+      "is_favorite": false,
+      "update_at": 1789376791,
+      "adddate": "2026-09-14"
+    },
+    {
+      "id": "1465333",
+      "author": "示例author",
+      "description": null,
+      "name": "示例name",
+      "image": "",
+      "category": {
+        "id": "1",
+        "title": "示例title"
+      },
+      "category_sub": {
+        "id": "1",
+        "title": "示例title"
+      },
+      "liked": false,
+      "is_favorite": false,
+      "update_at": 1787632620,
+      "adddate": "2026-08-25"
+    },
+    {
+      "id": "1458349",
+      "author": "示例author",
+      "description": null,
+      "name": "示例name",
+      "image": "",
+      "category": {
+        "id": "1",
+        "title": "示例title"
+      },
+      "category_sub": {
+        "id": "1",
+        "title": "示例title"
+      },
+      "liked": false,
+      "is_favorite": false,
+      "update_at": 1785987362,
+      "adddate": "2026-08-06"
+    }
+  ]
+}

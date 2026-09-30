@@ -23,6 +23,7 @@ __all__ = [
     "ConfigurationError",
     "CredentialError",
     "CryptoError",
+    "InvalidArgument",
     "JmcpyError",
     "NetworkIssue",
     "NotFound",
@@ -39,6 +40,13 @@ class JmcpyError(Exception):
 
 class ConfigurationError(JmcpyError):
     """配置项不合法或缺失。"""
+
+
+class InvalidArgument(JmcpyError, ValueError):
+    """调用方传入的参数不合法（例如车号格式不对）。
+
+    同时继承 :class:`ValueError`，因此按惯例 ``except ValueError`` 也能捕获。
+    """
 
 
 @dataclass(frozen=True, slots=True)

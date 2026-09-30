@@ -13,6 +13,7 @@ from typing import Any
 __all__ = [
     "as_bool",
     "as_int",
+    "as_items",
     "as_mapping",
     "as_optional_str",
     "as_str",
@@ -103,6 +104,23 @@ def as_str_tuple(value: Any) -> tuple[str, ...]:
     if isinstance(value, Sequence):
         return tuple(text for item in value if (text := as_str(item).strip()))
     return ()
+
+
+def as_items(value: Any) -> tuple[str, ...]:
+    """把「可能是数组、也可能是单个字符串」的字段统一成元组。
+
+    与 :func:`as_str_tuple` 的区别：字符串**不做切分**——``author`` 在详情里是数组、
+    在列表里是 ``"美娜讚 鋼鐵王 NTR"`` 这样的整串，切分会把一个作者拆成多个。
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        text = value.strip()
+        return (text,) if text else ()
+    if isinstance(value, Sequence):
+        return tuple(text for item in value if (text := as_str(item).strip()))
+    text = as_str(value).strip()
+    return (text,) if text else ()
 
 
 def as_mapping(value: Any) -> Mapping[str, Any]:

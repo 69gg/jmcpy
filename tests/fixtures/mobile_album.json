@@ -1,0 +1,93 @@
+{
+  "id": 1114751,
+  "name": "示例name",
+  "images": [],
+  "addtime": "1790347194",
+  "description": "示例description",
+  "total_views": "74837806",
+  "total_photos": 3,
+  "likes": "1524862",
+  "series": [
+    {
+      "id": "1114751",
+      "name": "示例name",
+      "sort": "1"
+    },
+    {
+      "id": "146418",
+      "name": "示例name",
+      "sort": "2"
+    },
+    {
+      "id": "146419",
+      "name": "示例name",
+      "sort": "3"
+    }
+  ],
+  "series_id": "1114751",
+  "real_link": "",
+  "comment_total": "16763",
+  "author": [
+    "示例author",
+    "示例author",
+    "示例author"
+  ],
+  "tags": [
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags",
+    "示例tags"
+  ],
+  "works": [
+    "示例works",
+    "示例works",
+    "示例works",
+    "示例works",
+    "示例works",
+    "示例works",
+    "示例works"
+  ],
+  "actors": [
+    "示例actors",
+    "示例actors",
+    "示例actors",
+    "示例actors",
+    "示例actors"
+  ],
+  "related_list": [
+    {
+      "id": "2464",
+      "author": "示例author",
+      "name": "示例name",
+      "image": ""
+    },
+    {
+      "id": "99426",
+      "author": "示例author",
+      "name": "示例name",
+      "image": ""
+    }
+  ],
+  "liked": false,
+  "is_favorite": false,
+  "is_aids": false,
+  "price": "",
+  "purchased": ""
+}
