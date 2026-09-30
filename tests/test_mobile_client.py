@@ -536,3 +536,33 @@ def test_decrypted_payload_must_be_object() -> None:
 
     with pytest.raises(ParseFailed):
         client.get_book(1)
+
+
+def test_download_pdf_with_password(load_fixture: Callable[[str], Any], tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from jmcpy.enums import ExportFormat
+
+    client, _ = make_client(base_routes(load_fixture))
+    chapter = replace(client.get_chapter(1114751), pictures=("00001.webp", "00002.webp"))
+
+    result = client.download(chapter, output=ExportFormat.PDF, dest=tmp_path, password="s3cret")
+
+    assert result.encrypted is True
+    assert result.pdf is not None
+    from pypdf import PdfReader
+
+    reader = PdfReader(result.pdf)
+    assert reader.is_encrypted is True
+    assert reader.decrypt("s3cret") > 0
+    assert len(reader.pages) == 2
+
+
+def test_download_rejects_password_for_non_pdf(load_fixture: Callable[[str], Any]) -> None:
+    from jmcpy.enums import ExportFormat
+    from jmcpy.errors import ConfigurationError
+
+    client, _ = make_client(base_routes(load_fixture))
+
+    with pytest.raises(ConfigurationError, match="只对 PDF 输出有意义"):
+        client.download(1114751, output=ExportFormat.BYTES, password="x")

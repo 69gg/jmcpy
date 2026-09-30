@@ -317,9 +317,13 @@ class Client:
         quality: int = DEFAULT_JPEG_QUALITY,
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
+        password: str | None = None,
         on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
-        """下载章节并交付为 bytes / base64 / 文件 / PDF（语义同移动端实现）。"""
+        """下载章节并交付为 bytes / base64 / 文件 / PDF（语义同移动端实现）。
+
+        ``password`` 会给 PDF 加上打开密码（仅 ``ExportFormat.PDF`` 可用）。
+        """
         return self._mobile.download(
             chapter,
             output=output,
@@ -330,6 +334,7 @@ class Client:
             quality=quality,
             dpi=dpi,
             strict=strict,
+            password=password,
             on_progress=on_progress,
         )
 
@@ -580,6 +585,7 @@ class AsyncClient:
         quality: int = DEFAULT_JPEG_QUALITY,
         dpi: float = DEFAULT_PDF_DPI,
         strict: bool = False,
+        password: str | None = None,
         on_progress: ProgressHook | None = None,
     ) -> ChapterDownload:
         """异步版下载；语义同同步版。"""
@@ -593,6 +599,7 @@ class AsyncClient:
             quality=quality,
             dpi=dpi,
             strict=strict,
+            password=password,
             on_progress=on_progress,
         )
 

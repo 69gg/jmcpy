@@ -68,6 +68,8 @@ class ChapterDownload:
     failures: tuple[DownloadFailure, ...] = ()
     pdf: Path | None = None
     destination: Path | None = field(default=None)
+    #: PDF 是否加了打开密码（只记录状态，不保存密码本身）
+    encrypted: bool = False
 
     def __len__(self) -> int:
         return len(self.artifacts)
@@ -100,4 +102,5 @@ class ChapterDownload:
 
     def __str__(self) -> str:
         state = "全部成功" if self.ok else f"{len(self.failures)} 张失败"
-        return f"章节 {self.chapter_id} 下载完成: {len(self.artifacts)}/{self.total} 张，{state}"
+        suffix = "，PDF 已加密" if self.encrypted else ""
+        return f"章节 {self.chapter_id} 下载完成: {len(self.artifacts)}/{self.total} 张，{state}{suffix}"

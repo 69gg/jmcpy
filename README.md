@@ -132,6 +132,9 @@ with Client() as client:
     paths = client.download(chapter, output=ExportFormat.PATH, dest="./out")  # list[Path]
     pdf = client.download(chapter, output=ExportFormat.PDF, dest="./out")  # Path
 
+    locked = client.download(chapter, output=ExportFormat.PDF, dest="./out", password="打开密码")
+    print(locked.pdf, locked.encrypted)  # PDF 用 AES-256 加密，打开需密码
+
     for artifact in pdf:
         print(artifact.index, artifact.suffix, artifact.decoded, artifact.size)
     print(pdf.pdf, len(pdf.failures))

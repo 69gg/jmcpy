@@ -21,6 +21,7 @@ from jmcpy.imaging import (
     descramble,
     detect_suffix,
     encode_image,
+    encrypt_pdf,
     image_stem,
     load_image,
     write_pdf,
@@ -459,3 +460,134 @@ def test_write_pdf_appends_pages_from_files(tmp_path: Path) -> None:
 def test_write_pdf_rejects_empty_input(tmp_path: Path) -> None:
     with pytest.raises(ConfigurationError, match="没有可写入 PDF"):
         write_pdf([], tmp_path / "out.pdf")
+
+
+# --------------------------------------------------------------------------- PDF 密码
+def read_pdf_password_state(path: Path) -> tuple[bool, int | None, bool]:
+    """返回 (是否加密, 页数, 无密码能否读取)。"""
+    from pypdf import PdfReader
+    from pypdf.errors import FileNotDecryptedError
+
+    reader = PdfReader(path)
+    encrypted = reader.is_encrypted
+    if not encrypted:
+        return False, len(reader.pages), True
+    try:
+        pages = len(reader.pages)
+    except FileNotDecryptedError:
+        return True, None, False
+    return True, pages, True
+
+
+def test_write_pdf_with_password_requires_it_to_open(tmp_path: Path) -> None:
+    from pypdf import PdfReader
+
+    pages = []
+    for index in range(3):
+        path = tmp_path / f"{index}.png"
+        make_image(color=(index * 40, 10, 10)).save(path, format="PNG")
+        pages.append(path)
+
+    output = write_pdf(pages, tmp_path / "locked.pdf", password="s3cret")
+
+    encrypted, pages_without_password, readable_without_password = read_pdf_password_state(output)
+    assert encrypted is True
+    assert pages_without_password is None
+    assert readable_without_password is False
+
+    reader = PdfReader(output)
+    assert reader.decrypt("wrong") == 0, "错误密码不应解开"
+    assert reader.decrypt("s3cret") > 0
+    assert len(reader.pages) == 3
+
+
+def test_write_pdf_without_password_is_not_encrypted(tmp_path: Path) -> None:
+    source = tmp_path / "1.png"
+    make_image().save(source, format="PNG")
+
+    output = write_pdf([source], tmp_path / "open.pdf")
+
+    encrypted, pages, readable = read_pdf_password_state(output)
+    assert (encrypted, pages, readable) == (False, 1, True)
+
+
+def test_encrypt_pdf_rejects_empty_password(tmp_path: Path) -> None:
+    source = tmp_path / "1.png"
+    make_image().save(source, format="PNG")
+    output = write_pdf([source], tmp_path / "p.pdf")
+
+    with pytest.raises(ConfigurationError, match="密码不能为空"):
+        encrypt_pdf(output, "")
+
+
+def test_encrypt_pdf_accepts_unicode_password(tmp_path: Path) -> None:
+    from pypdf import PdfReader
+
+    source = tmp_path / "1.png"
+    make_image().save(source, format="PNG")
+    output = write_pdf([source], tmp_path / "u.pdf")
+
+    encrypt_pdf(output, "中文密码 🔒")
+
+    reader = PdfReader(output)
+    assert reader.decrypt("中文密码 🔒") > 0
+
+
+def test_download_pdf_with_password(tmp_path: Path) -> None:
+    chapter = make_chapter(count=2)
+    source = FakeSource(chapter, {index: image_bytes(make_image()) for index in range(1, 3)})
+
+    result = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path, password="let-me-in")
+
+    assert result.pdf is not None
+    assert result.encrypted is True
+    encrypted, pages_without_password, readable = read_pdf_password_state(result.pdf)
+    assert (encrypted, pages_without_password, readable) == (True, None, False)
+
+    from pypdf import PdfReader
+
+    reader = PdfReader(result.pdf)
+    assert reader.decrypt("let-me-in") > 0
+    assert len(reader.pages) == 2
+
+
+def test_download_without_password_reports_unencrypted(tmp_path: Path) -> None:
+    chapter = make_chapter(count=1)
+    source = FakeSource(chapter, {1: image_bytes(make_image())})
+
+    result = download_chapter(source, chapter, output=ExportFormat.PDF, dest=tmp_path)
+
+    assert result.encrypted is False
+    assert "加密" not in str(result)
+
+
+def test_password_only_makes_sense_for_pdf() -> None:
+    chapter = make_chapter(count=1)
+    source = FakeSource(chapter, {1: image_bytes(make_image())})
+
+    with pytest.raises(ConfigurationError, match="只对 PDF 输出有意义"):
+        download_chapter(source, chapter, output=ExportFormat.BYTES, password="x")
+
+
+def test_empty_password_is_rejected() -> None:
+    chapter = make_chapter(count=1)
+    source = FakeSource(chapter, {1: image_bytes(make_image())})
+
+    with pytest.raises(ConfigurationError, match="不能为空字符串"):
+        download_chapter(source, chapter, output=ExportFormat.PDF, dest="/tmp", password="")
+
+
+async def test_async_download_pdf_with_password(tmp_path: Path) -> None:
+    chapter = make_chapter(count=2)
+    source = AsyncFakeSource(chapter, {index: image_bytes(make_image()) for index in range(1, 3)})
+
+    result = await download_chapter_async(
+        source, chapter, output=ExportFormat.PDF, dest=tmp_path, password="async-pass"
+    )
+
+    assert result.encrypted is True
+    from pypdf import PdfReader
+
+    reader = PdfReader(result.pdf)
+    assert reader.decrypt("async-pass") > 0
+    assert len(reader.pages) == 2

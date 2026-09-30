@@ -35,6 +35,8 @@ __all__ = [
 DEFAULT_JPEG_QUALITY = 95
 #: PDF 页面分辨率
 DEFAULT_PDF_DPI = 150.0
+#: PDF 加密算法（AES-256 需要 PDF 1.7 扩展级别 3，现代阅读器都支持）
+DEFAULT_PDF_ALGORITHM = "AES-256"
 
 _IMAGE_SAVE_FORMATS = {
     ".jpg": "JPEG",
@@ -176,11 +178,12 @@ def write_pdf(
     *,
     dpi: float = DEFAULT_PDF_DPI,
     quality: int = DEFAULT_JPEG_QUALITY,
+    password: str | None = None,
 ) -> Path:
-    """把若干图片按顺序合成一个 PDF。
+    """把若干图片按顺序合成一个 PDF，可选加打开密码。
 
-    逐页追加写入，因此同一时刻内存里只有一张图片——章节图片动辄上百张，
-    一次性全部载入容易把内存打满。
+    逐页追加写入，因此合成阶段同一时刻内存里只有一张图片——章节图片动辄上百张，
+    一次性全部载入容易把内存打满。加密是合成之后的单独一遍（见 :func:`encrypt_pdf`）。
     """
     if not sources:
         raise ConfigurationError("没有可写入 PDF 的图片")
@@ -194,7 +197,39 @@ def write_pdf(
         with open(output, "r+b") as handle, Image.open(source) as image:
             _normalize_for_pdf(image).save(handle, "PDF", append=True, quality=quality)
 
+    if password is not None:
+        encrypt_pdf(output, password)
+
     return output
+
+
+def encrypt_pdf(path: Path, password: str, *, algorithm: str = DEFAULT_PDF_ALGORITHM) -> Path:
+    """就地给 PDF 加上打开密码（默认 AES-256），返回同一个路径。
+
+    加密后打开文件必须提供密码；权限位放开，打开后可以正常阅读/打印/复制。
+    密码为空会直接报错——想不加密就不要传 password，避免「以为加了其实没加」。
+    """
+    if not password:
+        raise ConfigurationError("PDF 密码不能为空；不需要加密就不要传 password")
+
+    # pypdf 的导入成本约 70ms，只有真的要加密时才付这个代价
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(path)
+    writer = PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    writer.encrypt(user_password=password, algorithm=algorithm)
+
+    temporary = path.with_name(path.name + ".encrypting")
+    try:
+        with open(temporary, "wb") as handle:
+            writer.write(handle)
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return path
 
 
 def single_frame(image: Image.Image) -> Image.Image:

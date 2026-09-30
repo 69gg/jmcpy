@@ -450,3 +450,21 @@ def test_broken_session_file_does_not_break_construction(load_fixture: Callable[
     client = make_client(resolved, mobile_server, None)
 
     assert client.session is None
+
+
+def test_download_pdf_with_password_through_facade(
+    load_fixture: Callable[[str], Any], home: Path, tmp_path: Path
+) -> None:
+    from jmcpy.enums import ExportFormat
+
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
+    client = make_client(resolved, mobile_server, web_server)
+    chapter = replace(client.get_chapter(1114751), pictures=("00001.webp",))
+
+    result = client.download(chapter, output=ExportFormat.PDF, dest=tmp_path, password="facade-pass")
+
+    assert result.encrypted is True
+    from pypdf import PdfReader
+
+    reader = PdfReader(result.pdf)
+    assert reader.decrypt("facade-pass") > 0

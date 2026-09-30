@@ -97,6 +97,20 @@ dest/
 PDF 合成是**逐页追加**写入的，同一时刻内存里只有一张图片，因此章节有几百张图也
 不会把内存吃满；中间页文件放在 `dest/.jmcpy-pages-*` 临时目录里，结束后自动清理。
 
+## 给 PDF 加密码
+
+```python
+result = client.download(chapter, output=ExportFormat.PDF, dest="./out", password="打开密码")
+print(result.encrypted)  # True
+```
+
+- 用 **AES-256**（PDF 标准加密，现代阅读器都支持）；打开文件必须输入密码，
+  打开后阅读/打印/复制不受限制。
+- 密码只在 `PDF` 输出下有意义：其它格式传了会直接抛 `ConfigurationError`，
+  空字符串同样报错——避免「以为加了密码其实没加」。
+- 结果对象只记录 `encrypted` 这个布尔值，**不保存密码本身**。
+- 加密是在 PDF 合成完成之后的单独一遍，因此不影响合成阶段的内存占用。
+
 ## 失败处理
 
 单张失败不会打断整章，也不会被静默丢弃：

@@ -93,6 +93,8 @@ class _Plan:
     quality: int
     dpi: float
     strict: bool
+    #: PDF 打开密码；``None`` 表示不加密
+    password: str | None = None
 
     @property
     def page_suffix(self) -> str:
@@ -109,11 +111,17 @@ def _make_plan(
     dpi: float,
     strict: bool,
     chapter: Chapter,
+    password: str | None = None,
 ) -> _Plan:
     if concurrency is not None and concurrency < 1:
         raise ConfigurationError("concurrency 至少为 1")
     if quality < 1 or quality > 100:
         raise ConfigurationError("quality 需落在 1..100")
+    if password is not None:
+        if output is not ExportFormat.PDF:
+            raise ConfigurationError(f"password 只对 PDF 输出有意义，当前输出格式是 {output.value}")
+        if not password:
+            raise ConfigurationError("PDF 密码不能为空字符串；不需要加密就不要传 password")
 
     target = Path(dest) if dest is not None else None
     if output in {ExportFormat.PATH, ExportFormat.PDF}:
@@ -131,6 +139,7 @@ def _make_plan(
         quality=quality,
         dpi=dpi,
         strict=strict,
+        password=password,
     )
 
 
@@ -249,6 +258,7 @@ def _finalize(
             plan.work_dir / f"{chapter_dir_name(chapter)}.pdf",
             dpi=plan.dpi,
             quality=plan.quality,
+            password=plan.password,
         )
 
     result = ChapterDownload(
@@ -258,6 +268,7 @@ def _finalize(
         failures=tuple(failures),
         pdf=pdf_path,
         destination=plan.work_dir,
+        encrypted=plan.password is not None,
     )
     if plan.strict:
         result.raise_for_failures()
@@ -276,6 +287,7 @@ def download_chapter(
     quality: int = DEFAULT_JPEG_QUALITY,
     dpi: float = DEFAULT_PDF_DPI,
     strict: bool = False,
+    password: str | None = None,
     on_progress: ProgressHook | None = None,
 ) -> ChapterDownload:
     """下载一个章节并按 ``output`` 交付。
@@ -286,9 +298,10 @@ def download_chapter(
     :param concurrency: 并发下载数，默认取配置里的 ``concurrency``
     :param overwrite: 已存在的文件是否覆盖（``False`` 时复用已有文件）
     :param strict: 有失败项时是否直接抛异常
+    :param password: 给 PDF 加打开密码（仅 ``PDF`` 输出可用；默认 AES-256）
     :param on_progress: 进度回调 ``(已完成, 总数)``
     """
-    plan = _make_plan(output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter)
+    plan = _make_plan(output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter, password)
     indices = range(1, len(chapter.pictures) + 1)
     artifacts: list[PictureArtifact] = []
     failures: list[DownloadFailure] = []
@@ -336,10 +349,11 @@ async def download_chapter_async(
     quality: int = DEFAULT_JPEG_QUALITY,
     dpi: float = DEFAULT_PDF_DPI,
     strict: bool = False,
+    password: str | None = None,
     on_progress: ProgressHook | None = None,
 ) -> ChapterDownload:
     """异步版的 :func:`download_chapter`（并发用信号量控制）。"""
-    plan = _make_plan(output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter)
+    plan = _make_plan(output, dest, decode, concurrency, overwrite, quality, dpi, strict, chapter, password)
     indices = list(range(1, len(chapter.pictures) + 1))
     artifacts: list[PictureArtifact] = []
     failures: list[DownloadFailure] = []

@@ -1,5 +1,17 @@
 # 变更记录
 
+## v0.1.1 PDF 密码保护
+
+导出的 PDF 可以加打开密码了，顺便把版本号收敛到 pyproject.toml 一处。
+
+- `download(..., password="…")` 给 PDF 加打开密码，使用 AES-256（PDF 标准加密），
+  打开后阅读/打印/复制不受限制；结果对象用 `encrypted` 标记是否加密，不保存密码本身
+- `password` 只对 `ExportFormat.PDF` 有意义：其它输出格式会抛 `ConfigurationError`，
+  空字符串同样报错（避免「以为加了密码其实没加」）
+- 加密在 PDF 合成之后单独进行，不影响合成阶段「同一时刻只持有一张图」的内存特性；
+  新增依赖 `pypdf`（纯 Python），且只在真正加密时导入
+- 版本号改为只写在 `pyproject.toml`，并加了打包契约测试
+
 ## v0.1.0 首个版本
 
 一套只做库的禁漫天堂 SDK，同步与异步接口逐字对应，可 `uv build` 后发布到 PyPI。
