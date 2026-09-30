@@ -11,5 +11,6 @@
 from __future__ import annotations
 
 from .mobile import AsyncMobileClient, MobileClient
+from .web import AsyncWebClient, WebClient
 
-__all__ = ["AsyncMobileClient", "MobileClient"]
+__all__ = ["AsyncMobileClient", "AsyncWebClient", "MobileClient", "WebClient"]

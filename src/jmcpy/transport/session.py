@@ -66,7 +66,8 @@ class _SessionCore:
         default_endpoints: Sequence[str] | None = None,
     ) -> None:
         self._settings = settings
-        self._default_endpoints = tuple(default_endpoints) if default_endpoints else DEFAULT_MOBILE_ENDPOINTS
+        # 显式传入空元组表示「这个客户端暂时没有可用端点」，不能回退成默认值
+        self._default_endpoints = DEFAULT_MOBILE_ENDPOINTS if default_endpoints is None else tuple(default_endpoints)
 
     @property
     def settings(self) -> Settings:
