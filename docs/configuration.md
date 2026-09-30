@@ -33,7 +33,7 @@
 | `mobile_version` | `"2.1.9"` | 接口版本，参与 `tokenparam` |
 | `auto_update_mobile_version` | `True` | 是否用 `/setting` 返回的版本号自动更新 |
 | `user_agent` | `None` | 覆盖默认 User-Agent；`None` 表示按用途取内置值 |
-| `headers` | `{}` | 追加到每个请求的请求头 |
+| `headers` | `{}` | 追加到每个请求的请求头；名字与值只能是 latin-1 能表示的字符，非法取值会在构造请求时抛 `ConfigurationError` |
 | `cookies` | `{}` | 会话初始 Cookie |
 | `concurrency` | `8` | 图片下载并发数 |
 | `home` | `None` | 覆盖配置/缓存根目录；`None` 表示平台标准位置 |
