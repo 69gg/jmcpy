@@ -18,11 +18,13 @@ __all__ = [
     "AttemptFailure",
     "AuthRejected",
     "AuthRequired",
+    "BadStatus",
     "ChallengeBlocked",
     "ConfigurationError",
     "CredentialError",
     "CryptoError",
     "JmcpyError",
+    "NetworkIssue",
     "NotFound",
     "ParseFailed",
     "RegionBlocked",
@@ -70,6 +72,33 @@ class ResponseInvalid(JmcpyError):
         self.url = url
         self.snippet = snippet
         parts = [message]
+        if url:
+            parts.append(f"url={url}")
+        if snippet:
+            parts.append(f"响应片段={snippet[:200]}")
+        super().__init__(" | ".join(parts))
+
+
+class NetworkIssue(JmcpyError):
+    """链路层异常：连接被重置、超时、TLS 失败等。"""
+
+    def __init__(self, message: str, *, url: str | None = None, cause: BaseException | None = None) -> None:
+        self.url = url
+        self.cause = cause
+        suffix = f" | url={url}" if url else ""
+        if cause is not None:
+            suffix += f" | {type(cause).__name__}: {cause}"
+        super().__init__(f"{message}{suffix}")
+
+
+class BadStatus(JmcpyError):
+    """服务端返回了不可重试的 HTTP 状态码。"""
+
+    def __init__(self, status: int, *, url: str | None = None, snippet: str | None = None) -> None:
+        self.status = status
+        self.url = url
+        self.snippet = snippet
+        parts = [f"服务端返回 HTTP {status}"]
         if url:
             parts.append(f"url={url}")
         if snippet:
