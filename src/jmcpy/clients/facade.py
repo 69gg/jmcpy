@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Iterator, Mapping
+from dataclasses import replace
 from typing import Any
 
+from ..credentials import CredentialStore, LoginSession
 from ..endpoints import EndpointSet
 from ..enums import Genre, RankingSpan, SearchTarget, SortBy, SubGenre, TimeRange
 from ..errors import ConfigurationError
@@ -39,6 +41,20 @@ def _resolve_settings(settings: Settings | Mapping[str, Any] | None) -> Settings
     raise ConfigurationError(f"不支持的配置类型: {type(settings).__name__}")
 
 
+def _store_login(
+    store: CredentialStore,
+    cookies: Mapping[str, str],
+    account: Account | None,
+    fallback_username: str = "",
+) -> LoginSession:
+    """把当前凭据写成会话快照并落盘。"""
+    session = LoginSession.from_account(account, cookies)
+    if not session.username and fallback_username:
+        session = replace(session, username=fallback_username)
+    store.save(session)
+    return session
+
+
 class Client:
     """同步门面客户端。"""
 
@@ -48,10 +64,15 @@ class Client:
         *,
         mobile: MobileClient | None = None,
         web: WebClient | None = None,
+        store: CredentialStore | None = None,
     ) -> None:
         self._settings = _resolve_settings(settings)
         self._mobile = mobile if mobile is not None else MobileClient(self._settings)
         self._web = web
+        self._store = store if store is not None else CredentialStore(self._settings)
+        self._session: LoginSession | None = None
+        if self._settings.restore_session:
+            self.restore_session()
 
     # ------------------------------------------------------------------ 基础
     @property
@@ -94,6 +115,42 @@ class Client:
     def __exit__(self, *exc_info: object) -> None:
         self.close()
 
+    @property
+    def session(self) -> LoginSession | None:
+        """本地保存的登录快照（没有则为 ``None``）。"""
+        return self._session
+
+    @property
+    def credential_store(self) -> CredentialStore:
+        """会话文件读写器。"""
+        return self._store
+
+    def restore_session(self) -> LoginSession | None:
+        """从会话文件恢复登录态并把凭据应用到两种实现。
+
+        文件不存在、损坏或无法解密都返回 ``None``，不影响未登录使用。
+        """
+        session = self._store.load()
+        if session is None:
+            return None
+        self._apply_session(session)
+        return session
+
+    def save_session(self) -> LoginSession | None:
+        """把当前凭据写入会话文件；未登录时返回 ``None``。"""
+        cookies = self._mobile.get_cookies()
+        if not cookies.get("AVS"):
+            logger.debug("当前没有登录凭据，跳过保存会话")
+            return None
+        self._session = _store_login(self._store, cookies, self._mobile.cached_account)
+        return self._session
+
+    def _apply_session(self, session: LoginSession) -> None:
+        self._session = session
+        self._mobile.set_cookies(session.cookies)
+        if self._web is not None:
+            self._web.set_cookies(session.cookies)
+
     def refresh_endpoints(self, *, refresh: bool = True) -> EndpointSet:
         """刷新移动端与网页端域名（网页端域名来自同一次发现）。"""
         endpoints = self._mobile.refresh_endpoints(refresh=refresh)
@@ -102,16 +159,24 @@ class Client:
         return endpoints
 
     # ------------------------------------------------------------------ 登录
-    def login(self, username: str, password: str) -> Account:
-        """账号密码登录（走移动端接口），并把凭据同步给网页端。"""
+    def login(self, username: str, password: str, *, remember: bool = True) -> Account:
+        """账号密码登录（走移动端接口），把凭据同步给网页端并按需落盘。
+
+        :param remember: 是否写入会话文件（默认写入；文件加密方式见
+            :mod:`jmcpy.credentials`）
+        """
         account = self._mobile.login(username, password)
         self._sync_cookies_to_web()
+        if remember:
+            self._session = _store_login(self._store, self._mobile.get_cookies(), account, username)
         return account
 
     def logout(self) -> None:
-        """退出登录并清除本地凭据。"""
+        """退出登录并清除本地凭据（包括会话文件）。"""
         self._mobile.logout()
         self._sync_cookies_to_web()
+        self._session = None
+        self._store.clear()
 
     def account(self) -> Account:
         """获取当前登录用户资料。"""
@@ -242,10 +307,15 @@ class AsyncClient:
         *,
         mobile: AsyncMobileClient | None = None,
         web: AsyncWebClient | None = None,
+        store: CredentialStore | None = None,
     ) -> None:
         self._settings = _resolve_settings(settings)
         self._mobile = mobile if mobile is not None else AsyncMobileClient(self._settings)
         self._web = web
+        self._store = store if store is not None else CredentialStore(self._settings)
+        self._session: LoginSession | None = None
+        if self._settings.restore_session:
+            self.restore_session()
 
     # ------------------------------------------------------------------ 基础
     @property
@@ -285,6 +355,39 @@ class AsyncClient:
     async def __aexit__(self, *exc_info: object) -> None:
         await self.close()
 
+    @property
+    def session(self) -> LoginSession | None:
+        """本地保存的登录快照（没有则为 ``None``）。"""
+        return self._session
+
+    @property
+    def credential_store(self) -> CredentialStore:
+        """会话文件读写器。"""
+        return self._store
+
+    def restore_session(self) -> LoginSession | None:
+        """从会话文件恢复登录态并把凭据应用到两种实现。"""
+        session = self._store.load()
+        if session is None:
+            return None
+        self._apply_session(session)
+        return session
+
+    def save_session(self) -> LoginSession | None:
+        """把当前凭据写入会话文件；未登录时返回 ``None``。"""
+        cookies = self._mobile.get_cookies()
+        if not cookies.get("AVS"):
+            logger.debug("当前没有登录凭据，跳过保存会话")
+            return None
+        self._session = _store_login(self._store, cookies, self._mobile.cached_account)
+        return self._session
+
+    def _apply_session(self, session: LoginSession) -> None:
+        self._session = session
+        self._mobile.set_cookies(session.cookies)
+        if self._web is not None:
+            self._web.set_cookies(session.cookies)
+
     async def refresh_endpoints(self, *, refresh: bool = True) -> EndpointSet:
         endpoints = await self._mobile.refresh_endpoints(refresh=refresh)
         if self._web is not None and endpoints.web:
@@ -292,14 +395,20 @@ class AsyncClient:
         return endpoints
 
     # ------------------------------------------------------------------ 登录
-    async def login(self, username: str, password: str) -> Account:
+    async def login(self, username: str, password: str, *, remember: bool = True) -> Account:
+        """账号密码登录；``remember=True`` 时写入会话文件。"""
         account = await self._mobile.login(username, password)
         self._sync_cookies_to_web()
+        if remember:
+            self._session = _store_login(self._store, self._mobile.get_cookies(), account, username)
         return account
 
     def logout(self) -> None:
+        """退出登录并清除本地凭据（包括会话文件）。"""
         self._mobile.logout()
         self._sync_cookies_to_web()
+        self._session = None
+        self._store.clear()
 
     async def account(self) -> Account:
         return await self._mobile.account()

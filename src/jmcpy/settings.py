@@ -121,6 +121,8 @@ class Settings:
     session_path: Path | None = None
     #: 是否把会话主密钥交给操作系统钥匙串
     use_keyring: bool = True
+    #: 创建客户端时是否自动从会话文件恢复登录态
+    restore_session: bool = True
     #: 门面客户端是否允许把移动端不支持的能力自动路由到网页端
     auto_route: bool = True
 
@@ -290,6 +292,7 @@ def _env_overrides(env: Mapping[str, str]) -> dict[str, Any]:
         "JMCPY_HOME": ("home", Path),
         "JMCPY_SESSION_PATH": ("session_path", Path),
         "JMCPY_USE_KEYRING": ("use_keyring", _to_bool),
+        "JMCPY_RESTORE_SESSION": ("restore_session", _to_bool),
         "JMCPY_AUTO_ROUTE": ("auto_route", _to_bool),
     }
     for name, (target, caster) in getters.items():

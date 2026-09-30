@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -73,8 +74,15 @@ class FakeServer(HttpBackend):
         return [urlparse(item.url).path for item in self.requests]
 
 
-def make_settings(**overrides: Any) -> Settings:
+@pytest.fixture(name="home")
+def home_fixture(tmp_path: Path) -> Path:
+    """把会话文件与配置固定到临时目录，避免污染真实用户目录。"""
+    return tmp_path / "config"
+
+
+def make_settings(home: Path, **overrides: Any) -> Settings:
     base: dict[str, Any] = {
+        "home": home,
         "mobile_endpoints": MOBILE_ENDPOINTS,
         "web_endpoints": WEB_ENDPOINTS,
         "cdn_endpoints": ("cdn.example",),
@@ -86,9 +94,11 @@ def make_settings(**overrides: Any) -> Settings:
     return Settings(**base)
 
 
-def make_pair(load_fixture: Callable[[str], Any], **overrides: Any) -> tuple[Settings, FakeServer, FakeServer]:
+def make_pair(
+    load_fixture: Callable[[str], Any], home: Path, **overrides: Any
+) -> tuple[Settings, FakeServer, FakeServer]:
     """建一对（移动端、网页端）假服务端与共享配置。"""
-    resolved = make_settings(**overrides)
+    resolved = make_settings(home, **overrides)
     mobile_server = FakeServer(
         {
             "/setting": {"jm3_version": "2.1.9"},
@@ -128,10 +138,10 @@ def make_client(resolved: Settings, mobile_server: FakeServer, web_server: FakeS
     return Client(resolved, mobile=mobile, web=web)
 
 
-def test_resolve_settings_accepts_none_settings_and_mapping() -> None:
+def test_resolve_settings_accepts_none_settings_and_mapping(home: Path) -> None:
     assert isinstance(_resolve_settings(None), Settings)
     assert _resolve_settings({"timeout": 7}).timeout == 7
-    assert _resolve_settings(make_settings()).backend is Settings().backend
+    assert _resolve_settings(make_settings(home)).backend is Settings().backend
 
 
 def test_resolve_settings_rejects_other_types() -> None:
@@ -139,8 +149,8 @@ def test_resolve_settings_rejects_other_types() -> None:
         _resolve_settings("not-a-settings")  # type: ignore[arg-type]
 
 
-def test_search_defaults_to_mobile(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_search_defaults_to_mobile(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     listing = client.search("MANA", target=SearchTarget.TAG, sort=SortBy.VIEWS, time_range=TimeRange.WEEK)
@@ -150,8 +160,8 @@ def test_search_defaults_to_mobile(load_fixture: Callable[[str], Any]) -> None:
     assert web_server.paths() == [], "没有副分类时不应触碰网页端"
 
 
-def test_search_with_sub_genre_routes_to_web(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_search_with_sub_genre_routes_to_web(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     listing = client.search("关键词", genre=Genre.DOUJIN, sub_genre=SubGenre.CG)
@@ -161,8 +171,8 @@ def test_search_with_sub_genre_routes_to_web(load_fixture: Callable[[str], Any])
     assert web_server.paths() == ["/search/photos/doujin/sub/CG"]
 
 
-def test_browse_and_ranking_routing(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_browse_and_ranking_routing(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     client.ranking(RankingSpan.WEEK, page=1)
@@ -172,16 +182,16 @@ def test_browse_and_ranking_routing(load_fixture: Callable[[str], Any]) -> None:
     assert "/albums/doujin/sub/CG" in web_server.paths()
 
 
-def test_auto_route_can_be_disabled(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture, auto_route=False)
+def test_auto_route_can_be_disabled(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home, auto_route=False)
     client = make_client(resolved, mobile_server, web_server)
 
     with pytest.raises(ConfigurationError, match="关闭自动路由"):
         client.search("x", genre=Genre.DOUJIN, sub_genre=SubGenre.CG)
 
 
-def test_web_client_is_created_lazily(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, _ = make_pair(load_fixture)
+def test_web_client_is_created_lazily(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, _ = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, None)
 
     client.search("MANA")
@@ -191,8 +201,8 @@ def test_web_client_is_created_lazily(load_fixture: Callable[[str], Any]) -> Non
     assert client._web is not None
 
 
-def test_delegated_methods(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_delegated_methods(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     book = client.get_book(1114751)
@@ -209,8 +219,8 @@ def test_delegated_methods(load_fixture: Callable[[str], Any]) -> None:
     assert client.cover_url(1).endswith("/media/albums/1.jpg")
 
 
-def test_login_syncs_cookies_to_web(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_login_syncs_cookies_to_web(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     account = client.login("u", "p")
@@ -220,8 +230,8 @@ def test_login_syncs_cookies_to_web(load_fixture: Callable[[str], Any]) -> None:
     assert web_server.cookies.get("AVS") == "AVS-X", "登录后网页端也应带上凭据"
 
 
-def test_logout_clears_credentials(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_logout_clears_credentials(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
     client.login("u", "p")
 
@@ -231,8 +241,8 @@ def test_logout_clears_credentials(load_fixture: Callable[[str], Any]) -> None:
     assert web_server.cookies.get("AVS") == ""
 
 
-def test_set_cookies_applies_to_both(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_set_cookies_applies_to_both(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     client.set_cookies({"AVS": "T"})
@@ -241,8 +251,8 @@ def test_set_cookies_applies_to_both(load_fixture: Callable[[str], Any]) -> None
     assert web_server.cookies.get("AVS") == "T"
 
 
-def test_refresh_endpoints_applies_web_domains(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_refresh_endpoints_applies_web_domains(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
 
     endpoints = client.refresh_endpoints()
@@ -251,8 +261,8 @@ def test_refresh_endpoints_applies_web_domains(load_fixture: Callable[[str], Any
     assert client.endpoints == MOBILE_ENDPOINTS
 
 
-def test_close_closes_both(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_close_closes_both(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
     _ = client.web  # 触发创建
 
@@ -262,8 +272,8 @@ def test_close_closes_both(load_fixture: Callable[[str], Any]) -> None:
     assert web_server.closed is True
 
 
-def test_context_manager(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_context_manager(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
 
     with make_client(resolved, mobile_server, web_server) as client:
         assert client.search("MANA").items
@@ -271,8 +281,8 @@ def test_context_manager(load_fixture: Callable[[str], Any]) -> None:
     assert mobile_server.closed is True
 
 
-def test_endpoint_set_is_shared_with_web(load_fixture: Callable[[str], Any]) -> None:
-    resolved, mobile_server, web_server = make_pair(load_fixture)
+def test_endpoint_set_is_shared_with_web(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
     client = make_client(resolved, mobile_server, web_server)
     discovered = EndpointSet(mobile=("m.example",), cdn=(), web=("w1.example", "w2.example"))
 
@@ -283,7 +293,7 @@ def test_endpoint_set_is_shared_with_web(load_fixture: Callable[[str], Any]) -> 
     assert client.web.endpoints == ("w1.example", "w2.example")
 
 
-async def test_async_facade_delegates(load_fixture: Callable[[str], Any]) -> None:
+async def test_async_facade_delegates(load_fixture: Callable[[str], Any], home: Path) -> None:
     from jmcpy.clients.facade import AsyncClient
     from jmcpy.clients.mobile import AsyncMobileClient
     from jmcpy.clients.web import AsyncWebClient
@@ -323,7 +333,7 @@ async def test_async_facade_delegates(load_fixture: Callable[[str], Any]) -> Non
     async def noop(delay: float) -> None:
         return None
 
-    resolved = make_settings()
+    resolved = make_settings(home)
     mobile_server = AsyncServer({"/setting": {}, "/search": load_fixture("mobile_search.json")})
     web_server = AsyncServer({"/search/photos/doujin/sub/CG": LISTING_HTML})
     client = AsyncClient(
@@ -345,3 +355,70 @@ async def test_async_facade_delegates(load_fixture: Callable[[str], Any]) -> Non
     assert listing.items
     assert [item.book_id for item in routed.items] == [4242]
     assert urlparse(mobile_server.requests[-1].url).path == "/search"
+
+
+def test_login_persists_session_and_restores_it(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
+    client = make_client(resolved, mobile_server, web_server)
+
+    client.login("u", "p")
+    assert client.credential_store.path.is_file()
+
+    # 换一个全新的客户端（全新的 Cookie 容器），应当自动恢复登录态
+    fresh_resolved, fresh_mobile_server, _ = make_pair(load_fixture, home)
+    restored = make_client(fresh_resolved, fresh_mobile_server, None)
+
+    assert restored.is_logged_in() is True
+    assert restored.session is not None
+    assert restored.session.username == "u"
+    assert restored.session.avs == "AVS-X"
+
+
+def test_restore_session_can_be_disabled(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, _ = make_pair(load_fixture, home)
+    make_client(resolved, mobile_server, None).login("u", "p")
+
+    disabled, other_server, _ = make_pair(load_fixture, home, restore_session=False)
+    client = make_client(disabled, other_server, None)
+
+    assert client.is_logged_in() is False
+    assert client.session is None
+
+
+def test_logout_removes_session_file(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, web_server = make_pair(load_fixture, home)
+    client = make_client(resolved, mobile_server, web_server)
+    client.login("u", "p")
+
+    client.logout()
+
+    assert not client.credential_store.path.exists()
+    assert client.session is None
+
+
+def test_save_session_without_login_is_noop(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, _ = make_pair(load_fixture, home)
+    client = make_client(resolved, mobile_server, None)
+
+    assert client.save_session() is None
+    assert not client.credential_store.path.exists()
+
+
+def test_login_without_remember_keeps_file_absent(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, _ = make_pair(load_fixture, home)
+    client = make_client(resolved, mobile_server, None)
+
+    client.login("u", "p", remember=False)
+
+    assert client.is_logged_in() is True
+    assert not client.credential_store.path.exists()
+
+
+def test_broken_session_file_does_not_break_construction(load_fixture: Callable[[str], Any], home: Path) -> None:
+    resolved, mobile_server, _ = make_pair(load_fixture, home)
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "session.json").write_text("{ 坏文件", encoding="utf-8")
+
+    client = make_client(resolved, mobile_server, None)
+
+    assert client.session is None
