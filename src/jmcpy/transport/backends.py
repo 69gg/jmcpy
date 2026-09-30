@@ -146,6 +146,8 @@ class CurlCffiBackend(HttpBackend):
 
         try:
             raw = self._session.request(request.method, request.url, **_curl_kwargs(request))
+        except UnicodeEncodeError as exc:
+            raise ConfigurationError("请求头或 Cookie 的值必须是 latin-1 可编码的字节，当前取值含非法字符") from exc
         except RequestException as exc:
             raise NetworkIssue("请求发送失败", url=request.url, cause=exc) from exc
         except OSError as exc:  # 连接被重置、DNS 失败等
@@ -188,6 +190,8 @@ class AsyncCurlCffiBackend(AsyncHttpBackend):
 
         try:
             raw = await self._session.request(request.method, request.url, **_curl_kwargs(request))
+        except UnicodeEncodeError as exc:
+            raise ConfigurationError("请求头或 Cookie 的值必须是 latin-1 可编码的字节，当前取值含非法字符") from exc
         except RequestException as exc:
             raise NetworkIssue("请求发送失败", url=request.url, cause=exc) from exc
         except OSError as exc:

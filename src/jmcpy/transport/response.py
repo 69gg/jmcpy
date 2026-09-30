@@ -7,12 +7,29 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast, get_args
 
-from ..errors import ResponseInvalid
+from ..errors import ConfigurationError, ResponseInvalid
 
 __all__ = ["HttpMethod", "HttpRequest", "Reply"]
 
 HttpMethod = Literal["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "TRACE", "PATCH", "QUERY"]
 HTTP_METHODS: frozenset[str] = frozenset(get_args(HttpMethod))
+
+
+def _require_latin1_headers(headers: Mapping[str, str] | None) -> None:
+    """HTTP 头的名字与值只能是 latin-1 字节。
+
+    curl-cffi 会直接抛 ``UnicodeEncodeError``，httpx 则会悄悄用 utf-8 编码，
+    两者行为不一致且报错难以理解，因此在这里统一拦下并给出提示。
+    """
+    for name, value in (headers or {}).items():
+        for part in (name, value):
+            try:
+                str(part).encode("latin-1")
+            except UnicodeEncodeError as exc:
+                raise ConfigurationError(
+                    f"请求头只能用 latin-1 能表示的字符，"
+                    f"{name!r} 的值含非法字符（如需传中文请改用请求体或 Cookie 之外的机制）"
+                ) from exc
 
 
 def as_http_method(method: str) -> HttpMethod:
@@ -34,6 +51,11 @@ class HttpRequest:
     headers: Mapping[str, str] | None = None
     timeout: float | None = None
     allow_redirects: bool = True
+
+    def __post_init__(self) -> None:
+        # 方法在这里就收敛成受支持的写法，避免不同后端各写一套校验
+        object.__setattr__(self, "method", as_http_method(self.method))
+        _require_latin1_headers(self.headers)
 
     def with_url(self, url: str) -> HttpRequest:
         """换一个目标地址（用于端点切换）。"""
