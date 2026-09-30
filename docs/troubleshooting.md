@@ -31,15 +31,26 @@ except RequestFailed as exc:
 
 ## `ChallengeBlocked`
 
-撞上了站点的反爬验证页（"Just a moment..."）。重试没有意义，SDK 直接失败。
+撞上了站点的反爬验证页（"Just a moment..."）。**被拦的只是那一条线路**：SDK 会立刻换下一条
+域名继续，只有所有线路都被拦时才会把这个异常抛出来（异常信息里带着最后一条线路的地址）。
 
 - 用代理换出口 IP；
-- 或改用移动端接口的能力（门面默认就走移动端，只有副分类搜索会落到网页端）；
-- 网页端需要浏览器里已通过验证的 Cookie 时，可以自己注入：
+- 网页端可以显式配置在你能访问的域名上，跳过自动发现：
+
+```python
+from jmcpy import Settings, WebClient
+
+WebClient(Settings(web_endpoints=("可用域名",)))
+```
+
+- 站点要求浏览器验证时，可以自己注入浏览器里已通过验证的 Cookie：
 
 ```python
 client.set_cookies({"cf_clearance": "从浏览器里复制"})
 ```
+
+- 如果只是想要搜索/详情/评论，改用移动端接口即可（门面默认就走移动端，
+  只有副分类搜索会落到网页端）。
 
 ## `RegionBlocked`
 

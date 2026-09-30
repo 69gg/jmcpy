@@ -116,6 +116,30 @@ def test_plan_returns_none_after_exhaustion_and_is_idempotent() -> None:
     assert planner.plan() is None
 
 
+def test_skip_endpoint_jumps_to_next_endpoint_without_waiting() -> None:
+    planner = make_planner(retry_times=3)
+    first = planner.plan()
+    assert first is not None
+
+    planner.skip_endpoint(first.endpoint_index)
+    second = planner.plan()
+
+    assert second is not None
+    assert second.endpoint == "b.example", "应跳到下一个端点"
+    assert second.delay == 0.0, "换端点不再叠加退避"
+
+
+def test_skip_endpoint_removes_it_from_all_rounds() -> None:
+    planner = make_planner(mode=RetryMode.ROTATE_FIRST, retry_times=2)
+    first = planner.plan()
+    assert first is not None
+
+    planner.skip_endpoint(first.endpoint_index)
+    remaining = [item.endpoint for item in drain(planner)]
+
+    assert "a.example" not in remaining
+
+
 def test_record_collects_attempt_failures() -> None:
     planner = make_planner(("only.example",), retry_times=1)
     first = planner.plan()

@@ -71,6 +71,8 @@ class RetryPlanner:
         self._backoff_jitter = backoff_jitter
         self._schedule = self._build_schedule(retry_times)
         self._cursor = 0
+        self._skipped: set[int] = set()
+        self._skip_delay = False
         self._failures: list[AttemptFailure] = []
 
     @property
@@ -92,19 +94,33 @@ class RetryPlanner:
 
     def plan(self) -> Attempt | None:
         """取出下一次尝试；返回 ``None`` 表示已无可用尝试。"""
+        while self._cursor < len(self._schedule) and self._schedule[self._cursor][0] in self._skipped:
+            self._cursor += 1
         if self._cursor >= len(self._schedule):
             return None
 
         endpoint_index, round_index = self._schedule[self._cursor]
+        wait = self._cursor > 0 and not self._skip_delay
         attempt = Attempt(
             index=self._cursor + 1,
             endpoint=self._endpoints[endpoint_index],
             endpoint_index=endpoint_index,
             round=round_index,
-            delay=0.0 if self._cursor == 0 else self._backoff(self._cursor),
+            delay=self._backoff(self._cursor) if wait else 0.0,
         )
         self._cursor += 1
+        self._skip_delay = False
         return attempt
+
+    def skip_endpoint(self, endpoint_index: int) -> None:
+        """跳过该端点剩余的全部尝试。
+
+        用于「这个端点根本不可用」的情况（例如被反爬验证页拦截、地区封锁）：
+        在这些端点上重试没有意义，直接推进到下一个端点；下一次尝试也不等待——
+        换线路本身就是补救手段，等待并不会让被拦的线路变得可用。
+        """
+        self._skipped.add(endpoint_index)
+        self._skip_delay = True
 
     def record(self, attempt: Attempt | None, url: str, error: Exception) -> None:
         """登记一次失败。"""

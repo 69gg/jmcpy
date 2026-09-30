@@ -1,15 +1,32 @@
 """网页端页面的解析。
 
-**重要说明**：网页端在本机所处的网络环境下会被反爬验证页拦截，因此这里的解析
-没有经过线上校准。为了在这种前提下仍然可用，解析只依赖页面上最稳定的结构：
+页面结构（已按线上页面校准）：
 
-* 指向 ``/album/{id}`` 的链接（图片链接与标题链接都算），按出现顺序去重；
-* 标题取链接的 ``title`` 属性，没有则取链接文字；
-* 结果总数：数字文本紧邻「A漫」「個結果」这类文案时采用，取不到就是 ``None``；
-* 页面上的「關鍵字過短」这类提示会被识别成解析错误。
+.. code-block:: html
 
-代价是拿不到页面上的全部字段（例如标签、作者）；要完整字段请用移动端接口
-（:class:`jmcpy.clients.mobile.MobileClient`），它的响应本身就是结构化 JSON。
+    <a href="/album/1472715/mana-...">          <!-- 封面链接，车号在这里 -->
+      <img data-original=".../1472715_3x4.jpg?v=..." title="…">
+    </a>
+    <div class="label-loveicon"><span id="albim_likes_1472715" class="text-white">…</span></div>
+    <div class="label-category">…</div>
+    <div class="label-sub">…</div>
+    <span class="video-title title-truncate m-t-5">标题</span>
+    <div class="title-truncate"><a href="/search/photos?...&amp;main_tag=2">作者</a></div>
+    <div class="title-truncate tags p-b-5"><a class="tag" href="...">标签</a>…</div>
+    <span class="search-pagination-total">共255部</span>
+
+要点：
+
+* 车号来自指向 ``/album/{id}`` 的链接。列表页里这种链接的文字是空的（图片在链接里），
+  所以**不能**从链接文字取标题；
+* 标题在紧随其后的 ``class`` 含 ``video-title`` 的元素里；
+* 作者是 URL 带 ``main_tag=2`` 的搜索链接；标签是 ``class`` 含 ``tag`` 的链接；
+* 总数在 ``class`` 含 ``search-pagination-total`` 的元素里（形如「共255部」），
+  分类页没有这个元素，此时总数为 ``None``；
+* 搜索词非法（例如过短）时页面只有 ``<fieldset>`` 里的错误提示、没有卡片。
+
+解析按元素逐个收集，不依赖整页正则，页面增删无关字段也不会整体失效。
+需要作者、标签等完整字段时用移动端接口（:class:`jmcpy.clients.mobile.MobileClient`）。
 """
 
 from __future__ import annotations
@@ -33,15 +50,25 @@ __all__ = [
 ]
 
 _ALBUM_HREF = re.compile(r"/album/(\d+)")
+_AUTHOR_HREF = re.compile(r"[?&]main_tag=2(?:&|$)")
+_OG_URL_TAG = re.compile(r"<meta[^>]*og:url[^>]*>", re.I)
 _TITLE_TAG = re.compile(r"<title>(.*?)</title>", re.S | re.I)
-_OG_URL = re.compile(r"""property=["']og:url["'][^>]*content=["'][^"']*?/album/(\d+)""")
 _NUMBER = re.compile(r"\d[\d,]*")
 
-#: 页面上的错误提示，命中即认为这次搜索/浏览没有成功
-_ERROR_HINTS = ("關鍵字過短", "关键字过短", "關鍵字太短", "搜尋錯誤", "搜索错误", "沒有找到")
+#: ``class`` 含这些片段时整段取文本，并归到对应字段
+_CAPTURE_MODES = (("video-title", "title"), ("search-pagination-total", "total"))
 
-#: 总数文案，例如「共 123 本」「123 個結果」
-_TOTAL_HINTS = ("A漫", "個結果", "个结果", "本本", "筆結果", "条结果")
+#: 错误提示：``<fieldset>`` 里出现这些字样就认为这一页没有结果
+_ERROR_WORDS = ("错误", "錯誤", "error")
+
+#: 页码：分页控件里处于 active 状态的那一项
+_PAGINATION = (
+    r'(?:pagination|pager)[\s\S]{0,600}?class=["\'][^"\']*active[^"\']*["\'][\s\S]{0,200}?(\d+)',
+    r'class=["\'][^"\']*active[^"\']*["\'][\s\S]{0,200}?data-page=["\'](\d+)',
+)
+
+#: 总数兜底：任何文本里出现「共 255」都能识别
+_TOTAL_TEXT = re.compile(r"共\s*(\d[\d,]*)")
 
 
 @dataclass
@@ -66,74 +93,132 @@ class WebParseResult:
         )
 
 
+@dataclass
+class _Card:
+    """一张结果卡片上我们关心的字段。"""
+
+    book_id: int
+    title: str = ""
+    author: str = ""
+    tags: list[str] = field(default_factory=list)
+
+    def to_brief(self) -> BookBrief:
+        return BookBrief(book_id=self.book_id, title=self.title, author=self.author)
+
+
 class _ListingParser(HTMLParser):
-    """按文档顺序收集本子链接与标题，并尽力识别总数与错误提示。"""
+    """按元素收集卡片、总数与错误提示。"""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.albums: dict[int, str] = {}
+        self.cards: dict[int, _Card] = {}
+        self.order: list[int] = []
         self.total: int | None = None
         self.error: str | None = None
 
-        self._in_anchor = False
-        self._anchor_book_id: int | None = None
-        self._anchor_title: str | None = None
-        self._anchor_text: list[str] = []
-        self._last_number: int | None = None
+        self._last_card: int | None = None
+        self._capture_tag: str | None = None
+        self._capture_mode: str | None = None
+        self._buffer: list[str] = []
 
+    # ------------------------------------------------------------------ 元素
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag != "a":
-            return
         attributes = {name.lower(): (value or "") for name, value in attrs}
-        match = _ALBUM_HREF.search(attributes.get("href", ""))
-        self._in_anchor = True
-        self._anchor_book_id = int(match.group(1)) if match else None
-        self._anchor_title = attributes.get("title") or None
-        self._anchor_text = []
+        if tag == "a":
+            self._handle_anchor(attributes)
+            return
+        if tag == "fieldset":
+            self._begin_capture(tag, "fieldset")
+            return
+        self._begin_capture(tag, _mode_for(attributes.get("class", "")))
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "a" and self._in_anchor:
-            self._finish_anchor()
+        if self._capture_tag is not None and tag == self._capture_tag:
+            self._finish_capture()
 
     def handle_data(self, data: str) -> None:
         text = data.strip()
         if not text:
             return
-        if self._in_anchor:
-            self._anchor_text.append(text)
-        self._scan_text(text)
+        if self._capture_mode is not None:
+            self._buffer.append(text)
+            return
+        if self.total is None:
+            match = _TOTAL_TEXT.search(text)
+            if match:
+                self.total = as_int(match.group(1).replace(",", ""))
 
     # ------------------------------------------------------------------ 内部
-    def _finish_anchor(self) -> None:
-        self._in_anchor = False
-        book_id = self._anchor_book_id
-        self._anchor_book_id = None
-        if book_id is None:
+    def _handle_anchor(self, attributes: Mapping[str, str]) -> None:
+        href = attributes.get("href", "")
+        album = _ALBUM_HREF.search(href)
+        if album:
+            book_id = int(album.group(1))
+            if book_id not in self.cards:
+                self.cards[book_id] = _Card(book_id=book_id)
+                self.order.append(book_id)
+            self._last_card = book_id
+            # 少数版式把标题放在链接的 title 属性上，有就先用上
+            title = attributes.get("title", "").strip()
+            if title and not self.cards[book_id].title:
+                self.cards[book_id].title = title
             return
 
-        title = (self._anchor_title or " ".join(self._anchor_text)).strip()
-        existing = self.albums.get(book_id)
-        if existing is None or (not existing and title):
-            self.albums[book_id] = title
-
-    def _scan_text(self, text: str) -> None:
-        for hint in _ERROR_HINTS:
-            if hint in text:
-                self.error = text
-                return
-
-        numbers = _NUMBER.findall(text)
-        if self.total is not None:
+        if _AUTHOR_HREF.search(href):
+            self._begin_capture("a", "author")
             return
-        if any(hint in text for hint in _TOTAL_HINTS):
-            candidate = numbers[-1] if numbers else None
-            if candidate is None and self._last_number is not None:
-                self.total = self._last_number
-            elif candidate is not None:
-                self.total = as_int(candidate.replace(",", ""))
+
+        if "tag" in attributes.get("class", "").split():
+            self._begin_capture("a", "tag")
+
+    def _begin_capture(self, tag: str, mode: str | None) -> None:
+        if mode is None or self._capture_mode is not None:
             return
-        if numbers and not self._in_anchor:
-            self._last_number = as_int(numbers[-1].replace(",", ""))
+        self._capture_tag = tag
+        self._capture_mode = mode
+        self._buffer = []
+
+    def _finish_capture(self) -> None:
+        mode = self._capture_mode
+        text = " ".join(self._buffer).strip()
+        self._capture_tag = None
+        self._capture_mode = None
+        self._buffer = []
+
+        card = self.cards.get(self._last_card) if self._last_card is not None else None
+        if mode == "title" and card is not None and not card.title:
+            card.title = text
+        elif mode == "author" and card is not None and not card.author:
+            card.author = text
+        elif mode == "tag" and card is not None and text:
+            card.tags.append(text)
+        elif mode == "total" and self.total is None:
+            match = _NUMBER.search(text)
+            if match:
+                self.total = as_int(match.group(0).replace(",", ""))
+        elif mode == "fieldset" and text and any(word in text.lower() for word in _ERROR_WORDS):
+            self.error = text
+
+    def finish(self) -> list[int]:
+        """收尾并返回真正属于结果列表的车号。
+
+        列表页侧栏里也会出现指向本子的链接（例如推荐位），它们既没有标题也没有标签；
+        结果卡片的判据就是「取到了标题或标签」。若整页都没取到（未知版式），
+        则退回全部链接并用车号兜底，至少保证车号可用；识别出错误提示时除外。
+        """
+        cards = [card for card in self.cards.values() if card.title or card.tags]
+        if not cards and self.error is None:
+            cards = list(self.cards.values())
+            for card in cards:
+                card.title = f"JM{card.book_id}"
+        return [card.book_id for card in cards]
+
+
+def _mode_for(classes: str) -> str | None:
+    for keyword, mode in _CAPTURE_MODES:
+        if keyword in classes:
+            return mode
+    return None
 
 
 def parse_listing_page(html: str, *, page: int = 1, page_size: int = 80) -> WebParseResult:
@@ -141,8 +226,9 @@ def parse_listing_page(html: str, *, page: int = 1, page_size: int = 80) -> WebP
     parser = _ListingParser()
     parser.feed(html)
     parser.close()
+    book_ids = parser.finish()
 
-    items = tuple(BookBrief(book_id=book_id, title=title) for book_id, title in parser.albums.items())
+    items = tuple(parser.cards[book_id].to_brief() for book_id in book_ids)
     return WebParseResult(
         items=items,
         total=parser.total,
@@ -154,7 +240,11 @@ def parse_listing_page(html: str, *, page: int = 1, page_size: int = 80) -> WebP
 
 def parse_album_page_identity(html: str) -> tuple[int, str] | None:
     """从本子详情页取出 ``(车号, 标题)``，用于搜索被重定向到单个本子的情况。"""
-    match = _OG_URL.search(html) or _ALBUM_HREF.search(html)
+    candidate = html
+    tag = _OG_URL_TAG.search(html)
+    if tag:
+        candidate = tag.group(0)
+    match = _ALBUM_HREF.search(candidate) or _ALBUM_HREF.search(html)
     if match is None:
         return None
 
@@ -168,11 +258,7 @@ def parse_album_page_identity(html: str) -> tuple[int, str] | None:
 
 def parse_current_page(html: str) -> int | None:
     """页面上的当前页码（尽力而为；取不到返回 ``None``）。"""
-    for pattern in (
-        r"(?:pagination|pager|page)[\s\S]{0,600}?"
-        r'class=["\'][^"\']*active[^"\']*["\'][\s\S]{0,200}?(\d+)',
-        r'class=["\'][^"\']*active[^"\']*["\'][\s\S]{0,200}?data-page=["\'](\d+)',
-    ):
+    for pattern in _PAGINATION:
         match = re.search(pattern, html, re.I)
         if match:
             return as_int(match.group(1))

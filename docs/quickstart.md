@@ -122,7 +122,7 @@ except NotFound:
 except RequestFailed as exc:
     ...  # 重试与换端点都失败；exc.failures 是每一次尝试的记录
 except (ChallengeBlocked, RegionBlocked):
-    ...  # 反爬验证页 / 地区限制，重试无用，需要换网络环境或代理
+    ...  # 所有线路都被反爬验证页/地区限制拦下；换网络环境或代理，或改用移动端能力
 except JmcpyError:
     ...  # 其余本包异常的基类
 ```

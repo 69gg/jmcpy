@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 
@@ -192,34 +193,88 @@ def test_fatal_status_is_not_retried() -> None:
     assert sleeper.delays == []
 
 
-def test_challenge_page_fails_fast_with_actionable_message() -> None:
-    body = b"<html><title>Just a moment...</title>Enable JavaScript and cookies to continue</html>"
-    session, backend, _ = make_session([make_reply(403, body)])
+CHALLENGE_BODY = b"<html><title>Just a moment...</title>Enable JavaScript and cookies to continue</html>"
+
+
+def test_challenge_page_switches_endpoint_without_retrying() -> None:
+    """被验证页拦截的是「这条线路」，不是整个请求：换个端点继续，且不重试当前端点。"""
+    session, backend, sleeper = make_session([make_reply(403, CHALLENGE_BODY)], retry_times=3)
 
     with pytest.raises(ChallengeBlocked, match="反爬验证页"):
         session.send("GET", "/search/photos")
 
-    assert len(backend.requests) == 1
+    assert [request.url for request in backend.requests] == [
+        "https://a.example/search/photos",
+        "https://b.example/search/photos",
+    ], "每个端点只试一次，且不再重试被拦的那条"
+    assert sleeper.delays == [], "换端点不需要退避等待"
 
 
-def test_region_block_page_fails_fast() -> None:
+def test_challenge_on_first_endpoint_uses_the_second() -> None:
+    session, backend, _ = make_session([make_reply(403, CHALLENGE_BODY), make_reply(200)], retry_times=3)
+
+    reply = session.send("GET", "/search/photos")
+
+    assert reply.status == 200
+    assert [request.url for request in backend.requests] == [
+        "https://a.example/search/photos",
+        "https://b.example/search/photos",
+    ]
+
+
+def test_all_endpoints_challenged_raises_challenge_not_request_failed() -> None:
+    session, _, _ = make_session([make_reply(403, CHALLENGE_BODY)], retry_times=2)
+
+    with pytest.raises(ChallengeBlocked, match="反爬验证页"):
+        session.send("GET", "/x")
+
+
+def test_normal_page_with_cloudflare_boilerplate_is_not_a_challenge() -> None:
+    """正常页面里也会带 Cloudflare 的通用脚本，不能因此判定被拦截。"""
+    body = b'<html><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script><a href="/album/1">x</a></html>'
+    session, backend, _ = make_session([make_reply(200, body)])
+
+    reply = session.send("GET", "/search/photos")
+
+    assert reply.status == 200
+    assert len(backend.requests) == 1, "不应被误判为拦截而换线路"
+
+
+def test_region_block_switches_endpoint_then_reports() -> None:
     session, backend, _ = make_session([make_reply(403, b"Restricted Access!")])
 
     with pytest.raises(RegionBlocked, match="地区限制"):
         session.send("GET", "/album")
 
-    assert len(backend.requests) == 1
+    assert len(backend.requests) == 2, "地区封锁同样只是这条线路不可用"
 
 
 def test_challenge_detection_wins_over_retryable_status() -> None:
-    # 403 同时在 retry_status 里，但验证页必须直接失败而不是重试
-    body = b"<html><script>__cf_chl_opt</script></html>"
-    session, backend, _ = make_session([make_reply(403, body)], retry_times=3)
+    # 403 同时在 retry_status 里，但验证页不能被当成「临时异常」反复重试
+    session, backend, sleeper = make_session([make_reply(403, b"<html>__cf_chl_opt</html>")], retry_times=3)
 
     with pytest.raises(ChallengeBlocked):
         session.send("GET", "/x")
 
-    assert len(backend.requests) == 1
+    assert len(backend.requests) == 2
+    assert sleeper.delays == []
+
+
+def test_mixed_failures_still_reach_a_working_endpoint() -> None:
+    """一条被拦、一条网络故障、一条正常：应当最终拿到正常那条的结果。"""
+    session, backend, _ = make_session(
+        [make_reply(403, CHALLENGE_BODY), NetworkIssue("连不上"), make_reply(200)],
+        retry_times=0,
+    )
+
+    reply = session.send("GET", "/x", endpoints=("a.example", "b.example", "c.example"))
+
+    assert reply.status == 200
+    assert [request.url for request in backend.requests] == [
+        "https://a.example/x",
+        "https://b.example/x",
+        "https://c.example/x",
+    ]
 
 
 def test_network_issue_is_retried() -> None:
@@ -378,3 +433,48 @@ async def test_async_session_raises_request_failed_after_exhaustion() -> None:
         await session.send("GET", "/album")
 
     assert [item.endpoint for item in excinfo.value.failures] == ["a.example", "b.example"]
+
+
+def test_successful_endpoint_is_tried_first_next_time() -> None:
+    """记住上次成功的线路，避免每个请求都重新踩一遍失效线路。"""
+    # retry_times=0：一次调用里每个端点各试一次，所以脚本按「a 失败、b 成功」排
+    session, backend, _ = make_session([NetworkIssue("a 挂了"), make_reply(200), make_reply(200)], retry_times=0)
+
+    session.send("GET", "/album")  # a 失败 → b 成功
+    session.send("GET", "/album")  # 应当直接走 b
+
+    assert [request.url for request in backend.requests] == [
+        "https://a.example/album",
+        "https://b.example/album",
+        "https://b.example/album",
+    ]
+
+
+def test_challenged_endpoint_is_tried_last_next_time() -> None:
+    session, backend, _ = make_session([make_reply(403, CHALLENGE_BODY), make_reply(200)], retry_times=0)
+
+    session.send("GET", "/x")
+    session.send("GET", "/x")
+
+    assert [request.url for request in backend.requests][2] == "https://b.example/x"
+
+
+def test_explicit_endpoints_are_not_reordered() -> None:
+    """图片走的 CDN 轮换由调用方决定顺序，不能被记忆重排。"""
+    session, backend, _ = make_session([make_reply(200)], retry_times=0)
+
+    session.send("GET", "/img", endpoints=("cdn1.example", "cdn2.example"))
+    session.send("GET", "/img", endpoints=("cdn2.example", "cdn1.example"))
+
+    assert [urlparse(request.url).netloc for request in backend.requests] == ["cdn1.example", "cdn2.example"]
+
+
+def test_endpoint_memory_is_per_session() -> None:
+    first, first_backend, _ = make_session([NetworkIssue("down"), make_reply(200)], retry_times=0)
+    first.send("GET", "/album")
+
+    second, second_backend, _ = make_session([make_reply(200)], retry_times=0)
+    second.send("GET", "/album")
+
+    assert urlparse(first_backend.requests[-1].url).netloc == "b.example"
+    assert urlparse(second_backend.requests[-1].url).netloc == "a.example", "新会话不应继承记忆"

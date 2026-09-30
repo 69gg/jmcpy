@@ -40,13 +40,14 @@ __all__ = ["AsyncHttpSession", "HttpSession", "Validator"]
 #: 校验响应内容是否可用；不可用时抛异常，异常类型决定是否重试
 Validator = Callable[[Reply], None]
 
-#: 出现这些片段说明撞上了反爬验证页，重试没有意义
+#: 出现这些片段说明撞上了反爬验证页：这条线路在这段时间内不可用，换线路才有意义。
+#: 只用「验证页独有」的片段——像 ``challenge-platform``、``cdn-cgi/challenge``
+#: 这类 Cloudflare 通用脚本在正常页面里也会出现，拿它们当判据会把好页面误判成拦截。
 _CHALLENGE_MARKERS = (
     "just a moment",
-    "cf-chl",
-    "challenge-platform",
-    "__cf_chl",
     "enable javascript and cookies",
+    "__cf_chl",
+    "cf_chl_opt",
 )
 
 #: 出现这些片段说明当前出口 IP 被地区封锁
@@ -54,6 +55,11 @@ _REGION_MARKERS = ("restricted access",)
 
 #: 判定为「可重试」的异常类型
 _RETRYABLE_ERRORS = (NetworkIssue, ResponseInvalid, CryptoError)
+
+#: 判定为「这个端点不可用，换下一个」的异常类型。
+#: 它们不是请求级失败：同一条线路被反爬验证页拦截或地区封锁时，别的线路可能完全正常，
+#: 所以既不重试当前端点，也不立刻放弃整个请求。
+_ENDPOINT_FATAL_ERRORS = (ChallengeBlocked, RegionBlocked)
 
 
 class _SessionCore:
@@ -68,6 +74,10 @@ class _SessionCore:
         self._settings = settings
         # 显式传入空元组表示「这个客户端暂时没有可用端点」，不能回退成默认值
         self._default_endpoints = DEFAULT_MOBILE_ENDPOINTS if default_endpoints is None else tuple(default_endpoints)
+        # 线路记忆：上一次成功的线路优先，最近失败的线路排到最后。没有它的话，
+        # 每个请求都要重新踩一遍失效线路，代价是数秒的退避等待。
+        self._preferred: str | None = None
+        self._unhealthy: set[str] = set()
 
     @property
     def settings(self) -> Settings:
@@ -107,6 +117,10 @@ class _SessionCore:
     def _retryable(error: JmcpyError) -> bool:
         return isinstance(error, _RETRYABLE_ERRORS)
 
+    @staticmethod
+    def _endpoint_unusable(error: JmcpyError) -> bool:
+        return isinstance(error, _ENDPOINT_FATAL_ERRORS)
+
     # ------------------------------------------------------------------ 组装
     def _merge_headers(self, extra: Mapping[str, str] | None) -> dict[str, str]:
         headers = dict(self._settings.headers)
@@ -124,12 +138,37 @@ class _SessionCore:
         return url
 
     def _endpoints_for(self, url: str, endpoints: Sequence[str] | None) -> tuple[str, ...]:
-        """绝对地址且不含端点占位符时，只尝试一次。"""
+        """决定这次请求的端点顺序。
+
+        * 调用方显式传入端点（例如图片的 CDN 轮换）：完全按传入顺序，不做记忆重排；
+        * 绝对地址且不含占位符：只有一次机会；
+        * 其余走默认池，并按「上次成功的优先、最近失败的靠后」重排。
+        """
         if endpoints is not None:
             return tuple(endpoints)
-        if url.startswith("/") or "{endpoint}" in url:
-            return self._default_endpoints
-        return ("",)
+        if not (url.startswith("/") or "{endpoint}" in url):
+            return ("",)
+        return self._ordered(self._default_endpoints)
+
+    def _ordered(self, endpoints: Sequence[str]) -> tuple[str, ...]:
+        """把上一次成功的端点提到最前，把最近失败的端点放到最后。"""
+        if len(endpoints) < 2:
+            return tuple(endpoints)
+        preferred = tuple(item for item in endpoints if item == self._preferred)
+        rest = tuple(item for item in endpoints if item != self._preferred and item not in self._unhealthy)
+        unhealthy = tuple(item for item in endpoints if item != self._preferred and item in self._unhealthy)
+        return preferred + rest + unhealthy
+
+    def _remember_success(self, endpoint: str) -> None:
+        if endpoint:
+            self._preferred = endpoint
+            self._unhealthy.discard(endpoint)
+
+    def _remember_failure(self, endpoint: str) -> None:
+        if endpoint:
+            self._unhealthy.add(endpoint)
+            if self._preferred == endpoint:
+                self._preferred = None
 
     def _planner(
         self,
@@ -218,6 +257,7 @@ class HttpSession(_SessionCore):
         """发送请求；失败时按配置重试并在端点之间切换。"""
         planner = self._planner(url, endpoints, retry_times)
         chosen = self._endpoints_for(url, endpoints)
+        endpoint_fatal: JmcpyError | None = None
 
         while (attempt := planner.plan()) is not None:
             request = self._build_request(
@@ -238,12 +278,24 @@ class HttpSession(_SessionCore):
                 if validator is not None:
                     validator(reply)
             except JmcpyError as error:
+                self._remember_failure(attempt.endpoint)
+                if self._endpoint_unusable(error):
+                    # 换一条线路继续，但不重试当前这条
+                    planner.record(attempt, request.url, error)
+                    planner.skip_endpoint(attempt.endpoint_index)
+                    endpoint_fatal = error
+                    continue
                 if not self._retryable(error):
                     raise
                 planner.record(attempt, request.url, error)
+                endpoint_fatal = None
                 continue
+            self._remember_success(attempt.endpoint)
             return reply
 
+        if endpoint_fatal is not None:
+            # 所有尝试过的线路都不可用，抛出可操作的那个原因（而不是笼统的「重试失败」）
+            raise endpoint_fatal
         raise self._exhausted(url, chosen, planner.failures)
 
     def set_cookies(self, cookies: Mapping[str, str]) -> None:
@@ -315,6 +367,7 @@ class AsyncHttpSession(_SessionCore):
         """异步版的 :meth:`HttpSession.send`。"""
         planner = self._planner(url, endpoints, retry_times)
         chosen = self._endpoints_for(url, endpoints)
+        endpoint_fatal: JmcpyError | None = None
 
         while (attempt := planner.plan()) is not None:
             request = self._build_request(
@@ -335,12 +388,23 @@ class AsyncHttpSession(_SessionCore):
                 if validator is not None:
                     validator(reply)
             except JmcpyError as error:
+                self._remember_failure(attempt.endpoint)
+                if self._endpoint_unusable(error):
+                    # 换一条线路继续，但不重试当前这条
+                    planner.record(attempt, request.url, error)
+                    planner.skip_endpoint(attempt.endpoint_index)
+                    endpoint_fatal = error
+                    continue
                 if not self._retryable(error):
                     raise
                 planner.record(attempt, request.url, error)
+                endpoint_fatal = None
                 continue
+            self._remember_success(attempt.endpoint)
             return reply
 
+        if endpoint_fatal is not None:
+            raise endpoint_fatal
         raise self._exhausted(url, chosen, planner.failures)
 
     def set_cookies(self, cookies: Mapping[str, str]) -> None:

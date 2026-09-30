@@ -24,7 +24,7 @@ from ..constants import (
 )
 from ..endpoints import AsyncEndpointPool, EndpointPool, EndpointSet
 from ..enums import Genre, RankingSpan, SearchTarget, SortBy, SubGenre, TimeRange
-from ..errors import ConfigurationError, ParseFailed
+from ..errors import ConfigurationError, InvalidArgument, ParseFailed
 from ..models import BookBrief, Listing
 from ..parsing import (
     parse_album_page_identity,
@@ -194,7 +194,12 @@ class WebClient(_WebCore):
         genre: Genre = Genre.ALL,
         sub_genre: SubGenre | None = None,
     ) -> Listing[BookBrief]:
-        """网页端搜索；支持移动端不支持的副分类。"""
+        """网页端搜索；支持移动端不支持的副分类。
+
+        搜索词不能为空——网页端的搜索页需要关键词，想按分类列本子请用 :meth:`browse`。
+        """
+        if not query.strip():
+            raise InvalidArgument("网页端搜索需要关键词；按分类浏览请改用 browse()")
         path = self.build_path(PATH_WEB_SEARCH, genre, sub_genre)
         params = self.search_params(query, page, target, sort, time_range)
         return self.listing_from(self._get(path, params=params, page=page), page=page)
@@ -319,6 +324,8 @@ class AsyncWebClient(_WebCore):
         genre: Genre = Genre.ALL,
         sub_genre: SubGenre | None = None,
     ) -> Listing[BookBrief]:
+        if not query.strip():
+            raise InvalidArgument("网页端搜索需要关键词；按分类浏览请改用 browse()")
         path = self.build_path(PATH_WEB_SEARCH, genre, sub_genre)
         params = self.search_params(query, page, target, sort, time_range)
         return self.listing_from(await self._get(path, params=params, page=page), page=page)

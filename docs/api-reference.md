@@ -65,13 +65,22 @@ from jmcpy import Genre, SubGenre, WebClient
 with WebClient() as client:
     page = client.search("MANA", genre=Genre.DOUJIN, sub_genre=SubGenre.CG)
     client.browse(page=2, genre=Genre.HANMAN, sub_genre=SubGenre.CHINESE)
+    client.ranking(RankingSpan.WEEK)
 ```
+
+列表项解析出**车号、标题、作者**；`Listing.total` 只有搜索页提供（分类页没有该元素）。
+
+搜索**必须带关键词**（站点要求至少两个字），空查询会抛 `InvalidArgument` 并提示改用 `browse()`；
+关键词过短时站点自己返回错误页，SDK 转成 `ParseFailed` 并带上原文。
 
 网页端域名运行时从发布页发现；发现不到时可以显式配置：
 
 ```python
-WebClient(Settings(web_endpoints=("18comio.sbs",)))
+WebClient(Settings(web_endpoints=("可用域名",)))
 ```
+
+被反爬验证页拦截只是「这条线路不可用」，SDK 会自动换下一条；所有线路都不可用才抛
+`ChallengeBlocked`。
 
 ## 模型
 
