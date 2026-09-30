@@ -181,6 +181,7 @@ JMCPY_TIMEOUT=30 JMCPY_PROXY=http://127.0.0.1:7890 python your_script.py
 - [API 参考](docs/api-reference.md)
 - [架构说明](docs/architecture.md)
 - [疑难排查](docs/troubleshooting.md)
+- [发布流程](docs/releasing.md)
 - [变更记录](CHANGELOG.md)
 
 ## 许可
