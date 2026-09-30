@@ -28,8 +28,9 @@
 from __future__ import annotations
 
 import logging
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _package_version
 
-from ._version import __version__
 from .clients.facade import AsyncClient, Client
 from .clients.mobile import AsyncMobileClient, MobileClient
 from .clients.web import AsyncWebClient, WebClient
@@ -83,6 +84,12 @@ from .models import (
     Taxonomy,
 )
 from .settings import Settings
+
+try:
+    # 版本号的唯一来源是 pyproject.toml，这里从安装后的元数据读取
+    __version__ = _package_version("jmcpy")
+except PackageNotFoundError:  # pragma: no cover - 未安装（例如直接把 src 加进 sys.path）
+    __version__ = "0.0.0+unknown"
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 

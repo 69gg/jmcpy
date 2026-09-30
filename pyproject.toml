@@ -4,6 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jmcpy"
+version = "0.1.0"
 description = "禁漫天堂 Python SDK：搜索、评论、分类排行、章节详情与图片下载解码"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,7 +30,6 @@ dependencies = [
     "cryptography>=42",
     "platformdirs>=4",
 ]
-dynamic = ["version"]
 
 [project.optional-dependencies]
 # 传输层回退实现（默认使用 curl-cffi 的浏览器指纹伪装）
@@ -50,9 +50,6 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.9",
 ]
-
-[tool.hatch.version]
-path = "src/jmcpy/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jmcpy"]

@@ -411,6 +411,7 @@ wheels = [
 
 [[package]]
 name = "jmcpy"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
@@ -452,7 +453,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10" },
     { name = "platformdirs", specifier = ">=4" },
 ]
-provides-extras = ["all", "httpx", "keyring"]
+provides-extras = ["httpx", "keyring", "all"]
 
 [package.metadata.requires-dev]
 dev = [
